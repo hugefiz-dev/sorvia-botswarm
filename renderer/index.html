@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self';" />
+  <title>Sorvia BotSwarm</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="glow glow-a"></div>
+  <div class="glow glow-b"></div>
+
+  <!-- ===== animated loading screen ===== -->
+  <div id="loader" class="loader">
+    <div class="loader-inner">
+      <div class="loader-logo-wrap">
+        <div class="loader-ring"></div>
+        <div class="loader-ring r2"></div>
+        <img src="../assets/icon.png" class="loader-logo" alt="" />
+      </div>
+      <div class="loader-title">Sorvia <b>BotSwarm</b></div>
+      <div class="loader-bar"><span></span></div>
+      <div class="loader-text" data-i18n="loading">Yükleniyor…</div>
+    </div>
+    <div class="loader-fine">Sorvia Development Solutions by HugeFiz</div>
+  </div>
+
+  <!-- ===== first-run language splash (English) ===== -->
+  <div id="splash" class="splash" hidden>
+    <div class="splash-inner">
+      <img src="../assets/icon.png" class="splash-logo" alt="logo" />
+      <h1 class="splash-title">Sorvia <b>BotSwarm</b></h1>
+      <p class="splash-sub">Choose your language</p>
+      <div class="splash-langs">
+        <button class="splash-lang" data-lang="tr">
+          <span class="flag">🇹🇷</span><span>Türkçe</span>
+        </button>
+        <button class="splash-lang" data-lang="en">
+          <span class="flag">🇬🇧</span><span>English</span>
+        </button>
+      </div>
+      <p class="splash-fine">Sorvia Development Solutions by HugeFiz</p>
+    </div>
+  </div>
+
+  <!-- ===== title bar ===== -->
+  <header class="titlebar">
+    <div class="tb-left">
+      <img src="../assets/icon.png" class="tb-logo" alt="logo" />
+      <span class="tb-title">Sorvia <b>BotSwarm</b></span>
+    </div>
+    <nav class="tabbar" id="tabbar">
+      <button class="tab active" data-tab="test" data-i18n="tab_test">Test</button>
+      <button class="tab" data-tab="analysis" data-i18n="tab_analysis">Analiz</button>
+    </nav>
+    <div class="tb-right">
+      <div class="win-ctrls">
+        <button id="winMin" title="Minimize">&#8211;</button>
+        <button id="winMax" title="Maximize">&#9633;</button>
+        <button id="winClose" class="close" title="Close">&#10005;</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================ TEST TAB ============================ -->
+  <main class="layout tabview" id="tab-test">
+    <section class="panel settings-panel fade-in">
+      <h2 class="panel-title"><span class="dot"></span><span data-i18n="settings">Ayarlar</span></h2>
+
+      <div class="field-group">
+        <label class="field-label" data-i18n="server">Sunucu</label>
+        <div class="row">
+          <input id="host" class="inp grow" placeholder="127.0.0.1" data-i18n-ph="host_ph" />
+          <input id="port" class="inp port" placeholder="25565" value="25565" />
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" data-i18n="version">Sürüm</label>
+        <div class="row">
+          <select id="version" class="inp grow"></select>
+          <button id="refreshVersions" class="icon-btn" title="Refresh">&#8635;</button>
+        </div>
+        <div class="hint" id="versionHint"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="field-group">
+          <label class="field-label" data-i18n="bot_count">Bot sayısı</label>
+          <input id="count" type="number" class="inp" value="10" min="1" max="100" />
+          <div class="hint" data-i18n="max100">maks 100</div>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-i18n="join_delay">Giriş aralığı (sn)</label>
+          <input id="joinDelay" type="number" class="inp" value="0" min="0" step="0.5" />
+          <div class="hint" data-i18n="delay_hint">0 = hepsi aynı anda</div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="field-group">
+          <label class="field-label" data-i18n="chunks">Chunk (render)</label>
+          <input id="viewDistance" type="number" class="inp" value="4" min="2" max="32" />
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-i18n="duration">Süre (dk)</label>
+          <input id="durationMin" type="number" class="inp" value="5" min="1" max="60" />
+          <div class="hint" data-i18n="max60">maks 60 dk</div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-title" data-i18n="ai">Yapay zeka</div>
+            <div class="hint" data-i18n="ai_hint">Engellerden kaçarak yürür (CPU kullanır)</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="ai" /><span class="slider"></span></label>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-title" data-i18n="resilience">Dayanıklılık</div>
+            <div class="hint" data-i18n="resilience_hint">Ölünce respawn + bağlanamayınca tekrar dene</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="resilience" checked /><span class="slider"></span></label>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" data-i18n="prefix">Bot ad öneki</label>
+        <input id="usernamePrefix" class="inp" value="LoadBot" maxlength="10" />
+      </div>
+    </section>
+
+    <section class="panel scenario-panel fade-in" style="animation-delay:.05s">
+      <div class="panel-head">
+        <h2 class="panel-title"><span class="dot"></span><span data-i18n="scenarios">Senaryolar</span></h2>
+        <label class="mini-toggle"><input type="checkbox" id="loopScenarios" checked /><span data-i18n="loop">Döngüde tekrarla</span></label>
+      </div>
+      <div class="scenario-tree" id="scenarioTree"></div>
+      <div class="add-step">
+        <span class="add-label" data-i18n="add_step">Adım ekle:</span>
+        <div class="add-btns">
+          <button class="chip" data-add="wait">⏱ <span data-i18n="s_wait">Bekle</span></button>
+          <button class="chip" data-add="chat">💬 <span data-i18n="s_chat">Sohbet</span></button>
+          <button class="chip" data-add="roam">🧭 <span data-i18n="s_roam">Dolaş</span></button>
+          <button class="chip" data-add="jump">⤴ <span data-i18n="s_jump">Zıpla</span></button>
+          <button class="chip" data-add="look">👁 <span data-i18n="s_look">Etrafa bak</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel run-panel fade-in" style="animation-delay:.1s">
+      <div class="status-card">
+        <div class="status-line"><span class="status-dot" id="statusDot"></span><span id="statusText" data-i18n="idle">Boşta</span></div>
+        <div class="timer" id="timer">00:00</div>
+        <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat-num" id="stOnline">0</div><div class="stat-lbl" data-i18n="online">Çevrimiçi</div></div>
+        <div class="stat"><div class="stat-num" id="stConnecting">0</div><div class="stat-lbl" data-i18n="connecting">Bağlanıyor</div></div>
+        <div class="stat"><div class="stat-num" id="stTarget">0</div><div class="stat-lbl" data-i18n="target">Hedef</div></div>
+        <div class="stat"><div class="stat-num err" id="stError">0</div><div class="stat-lbl" data-i18n="errors">Hata</div></div>
+      </div>
+
+      <label class="own-check" id="ownWrap">
+        <input type="checkbox" id="ownConfirm" />
+        <span class="own-text" data-i18n="own_confirm">Bu sunucunun sahibiyim ve test için bot/IP korumalarını kapattım.</span>
+      </label>
+
+      <div class="run-actions">
+        <button id="startBtn" class="btn-primary" disabled><span data-i18n="start">Testi Başlat</span></button>
+        <button id="stopBtn" class="btn-danger" disabled><span data-i18n="stop">Durdur</span></button>
+      </div>
+
+      <div class="console-head">
+        <span data-i18n="console">Konsol</span>
+        <div class="console-tools">
+          <label class="mini-toggle"><input type="checkbox" id="autoscroll" checked /><span data-i18n="autoscroll">Oto-kaydır</span></label>
+          <button id="clearConsole" class="ghost-btn" data-i18n="clear">Temizle</button>
+        </div>
+      </div>
+      <div class="console" id="console"></div>
+    </section>
+  </main>
+
+  <!-- ========================== ANALYSIS TAB ========================== -->
+  <main class="layout2 tabview" id="tab-analysis" hidden>
+    <section class="panel analysis-inputs fade-in">
+      <h2 class="panel-title"><span class="dot"></span><span data-i18n="a_server_info">Sunucu Bilgisi</span></h2>
+      <div class="row">
+        <input id="aHost" class="inp grow" placeholder="127.0.0.1" data-i18n-ph="host_ph" />
+        <input id="aPort" class="inp port" placeholder="25565" value="25565" />
+        <button id="pingBtn" class="btn-mini" data-i18n="a_get_info">Bilgi Al</button>
+      </div>
+      <div class="ping-result" id="pingResult" hidden></div>
+
+      <h2 class="panel-title mt"><span class="dot"></span><span data-i18n="a_inputs">Girdiler</span></h2>
+      <div class="grid2">
+        <div class="field-group">
+          <label class="field-label" data-i18n="a_type">Sunucu tipi</label>
+          <select id="aType" class="inp">
+            <option value="paper">Paper</option>
+            <option value="purpur">Purpur</option>
+            <option value="pufferfish">Pufferfish</option>
+            <option value="spigot">Spigot</option>
+            <option value="bukkit">Bukkit/CraftBukkit</option>
+            <option value="fabric">Fabric</option>
+            <option value="forge">Forge</option>
+            <option value="vanilla">Vanilla</option>
+            <option value="unknown">?</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="field-label" data-i18n="a_ram">RAM (GB)</label>
+          <input id="aRam" type="number" class="inp" value="4" min="1" />
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field-group"><label class="field-label" data-i18n="a_players">Oyuncu (ort.)</label><input id="aPlayers" type="number" class="inp" value="20" min="0" /></div>
+        <div class="field-group"><label class="field-label" data-i18n="a_issue">Ana sorun</label>
+          <select id="aIssue" class="inp">
+            <option value="unknown" data-i18n="i_unknown">Bilmiyorum</option>
+            <option value="entities" data-i18n="i_entities">Varlık/Mob</option>
+            <option value="redstone" data-i18n="i_redstone">Redstone</option>
+            <option value="chunks" data-i18n="i_chunks">Chunk/Worldgen</option>
+            <option value="plugins" data-i18n="i_plugins">Eklenti</option>
+            <option value="gc" data-i18n="i_gc">GC/Bellek</option>
+            <option value="network" data-i18n="i_network">Ağ</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field-group"><label class="field-label">view-distance</label><input id="aView" type="number" class="inp" value="10" min="2" max="32" /></div>
+        <div class="field-group"><label class="field-label">simulation-distance</label><input id="aSim" type="number" class="inp" value="0" min="0" max="32" /></div>
+      </div>
+      <label class="mini-toggle mb"><input type="checkbox" id="aFlags" /><span data-i18n="a_flags">Aikar JVM flag'leri zaten kullanılıyor</span></label>
+
+      <h2 class="panel-title mt"><span class="dot"></span><span data-i18n="a_spark">Spark Çıktısı</span></h2>
+      <div class="hint mb" data-i18n="a_spark_hint">Sunucuda /spark tps ve /spark health yazıp çıktıyı buraya yapıştırın.</div>
+      <textarea id="aSpark" class="inp spark-box" data-i18n-ph="a_spark_ph" placeholder=""></textarea>
+      <div class="row mt">
+        <button id="parseSparkBtn" class="btn-mini" data-i18n="a_parse">Oku</button>
+        <div class="spark-parsed" id="sparkParsed"></div>
+      </div>
+
+      <button id="adviseBtn" class="btn-primary full mt" data-i18n="a_advise">Öneri Üret</button>
+    </section>
+
+    <section class="panel analysis-results fade-in" style="animation-delay:.05s">
+      <h2 class="panel-title"><span class="dot"></span><span data-i18n="a_results">Optimizasyon Önerileri</span></h2>
+      <div class="advice-list" id="adviceList">
+        <div class="empty" data-i18n="a_empty">Girdileri doldurup "Öneri Üret"e basın.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span class="fine" id="copyright">© Sorvia Development Solutions by HugeFiz</span>
+    <span class="fine right" data-i18n="disclaimer">Yalnızca kendi sunucunuzu test etmek içindir.</span>
+  </footer>
+
+  <template id="tpl-step">
+    <div class="step" draggable="true">
+      <div class="step-grip">⋮⋮</div>
+      <div class="step-branch"></div>
+      <div class="step-body">
+        <div class="step-head">
+          <span class="step-icon"></span><span class="step-name"></span><span class="step-idx"></span>
+          <button class="step-del" title="Remove">✕</button>
+        </div>
+        <div class="step-fields"></div>
+      </div>
+    </div>
+  </template>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+{
+  "name": "sorvia-botswarm",
+  "productName": "Sorvia BotSwarm",
+  "version": "1.1.0",
+  "description": "Minecraft server bot load & optimization testing tool (own-server testing)",
+  "author": "Sorvia Development Solutions",
+  "license": "MIT",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "node src/smoke.js",
+    "dist:win": "electron-builder --win portable",
+    "dist:win-setup": "electron-builder --win nsis",
+    "dist:winzip": "electron-builder --win portable zip",
+    "dist:linux": "electron-builder --linux AppImage",
+    "dist:mac": "electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "minecraft-protocol": "^1.47.0",
+    "mineflayer": "^4.20.1",
+    "mineflayer-pathfinder": "^2.4.5",
+    "protobufjs": "^7.6.6"
+  },
+  "devDependencies": {
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.sorvia.botswarm",
+    "productName": "Sorvia BotSwarm",
+    "copyright": "Sorvia Development Solutions by HugeFiz",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "portable": {
+      "artifactName": "Sorvia-BotSwarm-${version}-portable.exe",
+      "requestExecutionLevel": "user",
+      "unpackDirName": "SorviaBotSwarm"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Sorvia-BotSwarm-${version}-setup.exe",
+      "shortcutName": "Sorvia BotSwarm"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility",
+      "artifactName": "Sorvia-BotSwarm-${version}.AppImage"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.developer-tools"
+    }
+  }
+}
