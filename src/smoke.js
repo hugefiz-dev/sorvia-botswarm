@@ -30,8 +30,8 @@ const versions = require('./versions');
   const c = bm._sanitize({ host: 'localhost', count: 9999, durationMin: 999, joinDelay: -5 });
   if (c.count !== 100) { console.error('FAIL: bot cap', c.count); fail++; }
   else console.log('OK: bot count capped at 100');
-  if (c.durationMin !== 30) { console.error('FAIL: duration cap', c.durationMin); fail++; }
-  else console.log('OK: duration capped at 30 min');
+  if (c.durationMin !== 60) { console.error('FAIL: duration cap', c.durationMin); fail++; }
+  else console.log('OK: duration capped at 60 min');
   if (c.joinDelay !== 0) { console.error('FAIL: negative delay', c.joinDelay); fail++; }
   else console.log('OK: negative join delay clamped to 0');
 

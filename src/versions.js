@@ -27,19 +27,20 @@ const MANIFEST_URL =
 let cache = null; // { supported:[], generatedAt, source }
 
 function getSupportedSet() {
-  // Versions the installed engine can speak.
+  // Versions the installed engine can actually CONNECT with.
+  // Source of truth = node-minecraft-protocol's supportedVersions (the protocol
+  // layer mineflayer uses to log in). Using minecraft-data's full list here was
+  // the bug: it includes versions/snapshots the protocol can't speak (e.g. 26.2,
+  // 26.3-snapshot), which caused "invalid protocol" on connect.
+  const set = new Set();
   try {
-    const mcData = require('minecraft-data');
-    const pc = (mcData.versions && mcData.versions.pc) || [];
-    const set = new Set();
-    for (const v of pc) {
-      if (v && v.minecraftVersion) set.add(v.minecraftVersion);
-      if (v && v.majorVersion) set.add(v.majorVersion);
-    }
-    return set;
-  } catch (err) {
-    return new Set();
-  }
+    const mp = require('minecraft-protocol');
+    const list = Array.isArray(mp.supportedVersions)
+      ? mp.supportedVersions
+      : (mp.supportedVersions && mp.supportedVersions.pc) || [];
+    for (const v of list) set.add(v);
+  } catch (err) { /* leave empty -> caller handles */ }
+  return set;
 }
 
 // crude semver-ish comparison for "1.20.4" style strings (desc order helper)

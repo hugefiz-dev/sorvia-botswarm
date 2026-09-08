@@ -43,6 +43,7 @@ function fillVersions(v, preferred) {
   const sel = $('version'); const hint = $('versionHint');
   if (!v || !Array.isArray(v.supported)) return;
   sel.innerHTML = '';
+  const auto = document.createElement('option'); auto.value = ''; auto.textContent = T('ver_auto'); sel.appendChild(auto);
   v.supported.forEach((item) => {
     const o = document.createElement('option'); o.value = item.id; o.textContent = item.id; sel.appendChild(o);
   });
@@ -451,8 +452,13 @@ document.addEventListener('change', persist);
 
 /* ------------------------------- init ----------------------------------- */
 let loaderHidden = false;
+const LOADER_MIN_MS = 1000; // keep the loading screen up for at least 1s
+const loaderStart = Date.now();
 function hideLoader() {
-  if (loaderHidden) return; loaderHidden = true;
+  if (loaderHidden) return;
+  const wait = Math.max(0, LOADER_MIN_MS - (Date.now() - loaderStart));
+  if (wait > 0) { setTimeout(hideLoader, wait); return; } // enforce minimum time
+  loaderHidden = true;
   const l = $('loader'); if (!l || l.hidden) return;
   l.classList.add('closing');
   setTimeout(() => (l.hidden = true), 450);

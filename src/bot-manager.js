@@ -22,7 +22,9 @@
  *                      loaded when AI is enabled.
  */
 
-const mineflayer = require('mineflayer');
+// mineflayer is required lazily (only when a test starts) so the app's idle
+// memory stays low — requiring it eagerly pulls the whole prismarine stack.
+let mineflayer = null;
 
 const MAX_BOTS = 100;
 const MAX_DURATION_MIN = 60;
@@ -43,6 +45,9 @@ class BotManager {
     this.counters = { target: 0, connecting: 0, online: 0, ended: 0, error: 0, reconnects: 0 };
     this._pathfinder = null;
     this._logBuf = [];
+    this._loopTimers = new Set();
+    this._settleResolvers = {};
+    this._settleTimeouts = {};
   }
 
   /* --------------------------- logging (batched) --------------------------- */
@@ -82,10 +87,17 @@ class BotManager {
     const cfg = this._sanitize(rawConfig);
     if (cfg.error) return { ok: false, error: cfg.error };
 
+    // Lazy-load the (heavy) bot engine only now, on first test start.
+    if (!mineflayer) {
+      try { mineflayer = require('mineflayer'); }
+      catch (e) { return { ok: false, error: 'engine-load-failed: ' + e.message }; }
+    }
+
     this.config = cfg;
     this.running = true;
     this.startedAt = Date.now();
     this.counters = { target: cfg.count, connecting: 0, online: 0, ended: 0, error: 0, reconnects: 0 };
+    this._verHintShown = false;
 
     if (cfg.ai) {
       try {
@@ -100,11 +112,10 @@ class BotManager {
     this.log('info', `Starting → ${cfg.host}:${cfg.port} | ${cfg.version || 'auto'} | ${cfg.count} bots | ${cfg.durationMin} min`);
     this.emit({ kind: 'state', running: true });
 
-    for (let i = 0; i < cfg.count; i++) {
-      const delay = cfg.joinDelay * 1000 * i;
-      const t = setTimeout(() => this._connectSlot(i + 1), delay);
-      this.spawnTimers.push(t);
-    }
+    // Sequential join: connect ONE bot, wait until it actually spawns (or
+    // fails/times out), then move to the next. This spreads the CPU/packet
+    // load over time so the panel never freezes, and honors "one at a time".
+    this._spawnLoop().catch((e) => this.log('warn', 'spawn loop: ' + e.message));
 
     this.endTimer = setTimeout(() => {
       this.log('info', 'Duration reached — stopping all bots.');
@@ -115,6 +126,41 @@ class BotManager {
     this.logTimer = setInterval(() => this._flushLogs(), LOG_FLUSH_MS);
     this.pushStats();
     return { ok: true };
+  }
+
+  /* --------------------- sequential join queue -------------------------- */
+  async _spawnLoop() {
+    const cfg = this.config;
+    for (let i = 0; i < cfg.count; i++) {
+      if (!this.running) return;
+      await this._connectAndWait(i + 1);      // wait until this bot is in (or failed)
+      if (!this.running) return;
+      if (cfg.joinDelay > 0) await this._plainSleep(cfg.joinDelay * 1000);
+    }
+  }
+
+  _connectAndWait(id) {
+    return new Promise((resolve) => {
+      this._settleResolvers[id] = resolve;
+      // Safety: don't let one stuck connection stall the whole queue.
+      this._settleTimeouts[id] = setTimeout(() => this._settle(id), 15000);
+      this._connectSlot(id);
+    });
+  }
+
+  _settle(id) {
+    const r = this._settleResolvers[id];
+    if (!r) return; // already settled (idempotent)
+    delete this._settleResolvers[id];
+    if (this._settleTimeouts[id]) { clearTimeout(this._settleTimeouts[id]); delete this._settleTimeouts[id]; }
+    r();
+  }
+
+  _plainSleep(ms) {
+    return new Promise((resolve) => {
+      const t = setTimeout(() => { this._loopTimers.delete(t); resolve(); }, Math.max(0, ms));
+      this._loopTimers.add(t);
+    });
   }
 
   _sanitize(c) {
@@ -166,6 +212,7 @@ class BotManager {
     rec.intentional = false;
     rec.attempts++;
     this.counters.connecting++;
+    this.log('info', rec.attempts > 1 ? `Connecting… (try ${rec.attempts})` : 'Connecting…', rec.username);
 
     let bot;
     try {
@@ -178,6 +225,8 @@ class BotManager {
       this.counters.connecting = Math.max(0, this.counters.connecting - 1);
       this.counters.error++;
       this.log('error', `create failed: ${err.message}`, rec.username);
+      if (this._isVersionError(err.message)) { rec.fatal = true; this._versionHint(); }
+      this._settle(id);
       this._scheduleReconnect(rec);
       return;
     }
@@ -194,6 +243,7 @@ class BotManager {
       }
       rec.state = 'online';
       rec.origin = bot.entity ? bot.entity.position.clone() : rec.origin;
+      this._settle(id); // this bot is in → queue may start the next one
 
       if (cfg.ai && this._pathfinder && !rec.pfLoaded) {
         try {
@@ -234,6 +284,7 @@ class BotManager {
     bot.on('error', (err) => {
       this.counters.error++;
       this.log('error', `${err.code || 'ERR'}: ${err.message}`, rec.username);
+      if (this._isVersionError(err.message)) { rec.fatal = true; this._versionHint(); }
     });
 
     bot.once('end', (reason) => {
@@ -245,6 +296,7 @@ class BotManager {
       rec.gen++;
       for (const t of rec.timers) clearTimeout(t);
       rec.timers.clear();
+      this._settle(id); // if it dropped before spawning, let the queue continue
       if (rec.intentional || !this.running) {
         this.counters.ended++;
         return;
@@ -255,6 +307,7 @@ class BotManager {
   }
 
   _scheduleReconnect(rec) {
+    if (rec.fatal) { this.counters.ended++; return; } // unsupported version: retrying is futile
     if (!this.running || !this.config.autoReconnect) { this.counters.ended++; return; }
     const backoff = Math.min(RECONNECT_MAX_BACKOFF_MS, 1000 * Math.pow(2, Math.min(rec.attempts, 4)));
     this.counters.reconnects++;
@@ -384,6 +437,10 @@ class BotManager {
 
     for (const t of this.spawnTimers) clearTimeout(t);
     this.spawnTimers = [];
+    for (const t of this._loopTimers) clearTimeout(t);
+    this._loopTimers.clear();
+    // unblock the sequential join queue
+    for (const id of Object.keys(this._settleResolvers)) this._settle(id);
     if (this.endTimer) { clearTimeout(this.endTimer); this.endTimer = null; }
     if (this.statTimer) { clearInterval(this.statTimer); this.statTimer = null; }
 
@@ -393,10 +450,23 @@ class BotManager {
       for (const t of rec.timers) clearTimeout(t);
       rec.timers.clear();
       try {
-        if (rec.bot) { rec.bot.removeAllListeners('end'); rec.bot.quit(reason || 'stopped'); }
+        if (rec.bot) {
+          // rec.intentional is already true, so our 'end' handler won't reconnect.
+          // Let mineflayer tear itself down (this stops its physics tick and
+          // internal timers). Do NOT null bot internals here — the physics loop
+          // may still fire once and would crash on nulled state.
+          try { rec.bot.quit(reason || 'stopped'); } catch (_) { try { rec.bot.end(); } catch (_) {} }
+        }
       } catch (_) {}
+      rec.bot = null; rec.origin = null; // drop our reference so GC can collect it
     }
     this.slots.clear();
+    this._settleResolvers = {};
+    this._settleTimeouts = {};
+
+    // Reclaim memory: bot worlds/chunks are large. Give listeners a tick to
+    // detach, then force GC (available because main enables --expose-gc).
+    setTimeout(() => { try { if (global.gc) { global.gc(); } } catch (_) {} }, 800);
 
     if (wasRunning) {
       this.log('info', `All bots stopped (${reason || 'stopped'}).`);
@@ -409,6 +479,18 @@ class BotManager {
     }
     if (this.logTimer) { clearInterval(this.logTimer); this.logTimer = null; }
     this._flushLogs();
+  }
+
+  _isVersionError(msg) {
+    return /no data available for version|unsupported protocol version|unknown version|unsupported version/i.test(String(msg || ''));
+  }
+
+  _versionHint() {
+    if (this._verHintShown) return;
+    this._verHintShown = true;
+    this.log('warn', 'This Minecraft version is not supported by the bot engine yet (newest supported is 26.1). Fixes: (1) install ViaVersion + ViaBackwards on your test server and select 26.1 in the app, or (2) test a server on 26.1 or older. Newer versions become available via a library update (npm update) once PrismarineJS ships support.');
+    this.log('warn', 'Bu MC sürümü bot motoru tarafından henüz desteklenmiyor (en yeni 26.1). Çözüm: sunucuna ViaVersion+ViaBackwards kurup uygulamada 26.1 seç, ya da 26.1 ve altı bir sunucu test et. Yeni sürümler kütüphane güncellenince (npm update) gelir.');
+    this.stopAll('unsupported-version');
   }
 
   _clean(reason) {

@@ -23,7 +23,7 @@ window.I18N = {
     empty_scenarios: 'Henüz senaryo yok. Aşağıdan adım ekleyin.',
     err_no_host: 'Lütfen sunucu IP girin.', err_own: 'Devam etmek için sahiplik onayını işaretleyin.',
     ver_source_mojang: 'Mojang’dan güncel', ver_source_local: 'Çevrimdışı liste (Mojang’a ulaşılamadı)',
-    ver_latest: 'en yeni', ver_loading: 'Sürümler yükleniyor…',
+    ver_latest: 'en yeni', ver_loading: 'Sürümler yükleniyor…', ver_auto: 'Otomatik (algıla)',
     chat_ph: '/spawn  ya da  merhaba', starting: 'Test başlatılıyor…', stopped_by_user: 'Kullanıcı durdurdu.',
     loading: 'Yükleniyor…',
 
@@ -75,7 +75,7 @@ window.I18N = {
     empty_scenarios: 'No scenarios yet. Add a step below.',
     err_no_host: 'Please enter a server IP.', err_own: 'Please tick the ownership confirmation to continue.',
     ver_source_mojang: 'Live from Mojang', ver_source_local: 'Offline list (could not reach Mojang)',
-    ver_latest: 'latest', ver_loading: 'Loading versions…',
+    ver_latest: 'latest', ver_loading: 'Loading versions…', ver_auto: 'Auto (detect)',
     chat_ph: '/spawn  or  hello', starting: 'Starting test…', stopped_by_user: 'Stopped by user.',
     loading: 'Loading…',
 

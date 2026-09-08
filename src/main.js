@@ -7,10 +7,21 @@ const fs = require('fs');
 const BotManager = require('./bot-manager');
 const versions = require('./versions');
 const advisor = require('./advisor');
-const sparkFetch = require('./spark-fetch');
+
+// Heavy modules are required lazily (on first use) to keep idle memory low.
+// Allow manual GC so memory is reclaimed after a test is stopped.
+try { app.commandLine.appendSwitch('js-flags', '--expose-gc'); } catch (_) {}
 
 let mcPing = null;
-try { mcPing = require('minecraft-protocol').ping; } catch (_) {}
+let sparkFetch = null;
+function getPing() {
+  if (mcPing === null) { try { mcPing = require('minecraft-protocol').ping; } catch (_) { mcPing = false; } }
+  return mcPing || null;
+}
+function getSparkFetch() {
+  if (!sparkFetch) sparkFetch = require('./spark-fetch');
+  return sparkFetch;
+}
 
 let mainWindow = null;
 let botManager = null;
@@ -155,9 +166,10 @@ function flattenDesc(d) {
 }
 ipcMain.handle('server:ping', (_e, { host, port, version }) => {
   return new Promise((resolve) => {
-    if (!mcPing) return resolve({ error: 'ping-unavailable' });
+    const ping = getPing();
+    if (!ping) return resolve({ error: 'ping-unavailable' });
     try {
-      mcPing({ host: String(host || '').trim(), port: parseInt(port, 10) || 25565, version: version || false }, (err, res) => {
+      ping({ host: String(host || '').trim(), port: parseInt(port, 10) || 25565, version: version || false }, (err, res) => {
         if (err) return resolve({ error: err.message });
         const name = res && res.version && res.version.name;
         resolve({
@@ -174,7 +186,7 @@ ipcMain.handle('server:ping', (_e, { host, port, version }) => {
 });
 ipcMain.handle('analyze:parseSpark', (_e, text) => advisor.parseSparkText(text));
 ipcMain.handle('analyze:advise', (_e, input) => advisor.advise(input));
-ipcMain.handle('analyze:fetchSpark', (_e, url) => sparkFetch.fetchSparkReport(url));
+ipcMain.handle('analyze:fetchSpark', (_e, url) => getSparkFetch().fetchSparkReport(url));
 
 /* ------------------------- IPC: test control ------------------------- */
 ipcMain.handle('test:start', async (_e, config) => {

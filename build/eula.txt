@@ -1,0 +1,28 @@
+Sorvia BotSwarm - Terms of Use
+Sorvia Development Solutions by HugeFiz
+
+By installing and using Sorvia BotSwarm ("the Software"), you agree to the
+following terms:
+
+1. INTENDED USE. The Software is a load- and optimization-testing tool for
+   Minecraft servers. You may use it ONLY against servers that you own or are
+   explicitly authorized to test. You are responsible for disabling your own
+   server's anti-bot / connection-limit protections for your tests.
+
+2. NO ABUSE. You must not use the Software to attack, disrupt, overload, or
+   gain unauthorized access to any server or service you do not control. Doing
+   so may violate laws and the terms of service of third parties. All such use
+   is solely your responsibility.
+
+3. LIMITS. The Software connects honest client sessions only and contains no
+   protection-bypass mechanism. It caps concurrent bots and test duration to
+   discourage misuse.
+
+4. NO WARRANTY. The Software is provided "AS IS", without warranty of any kind.
+   The authors are not liable for any damages arising from its use.
+
+5. LICENSE. The Software is distributed under the MIT License.
+
+If you do not agree to these terms, do not install or use the Software.
+
+(c) Sorvia Development Solutions by HugeFiz

@@ -1,7 +1,7 @@
 {
   "name": "sorvia-botswarm",
   "productName": "Sorvia BotSwarm",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Minecraft server bot load & optimization testing tool (own-server testing)",
   "author": "Sorvia Development Solutions",
   "license": "MIT",
@@ -9,8 +9,8 @@
   "scripts": {
     "start": "electron .",
     "smoke": "node src/smoke.js",
-    "dist:win": "electron-builder --win portable",
-    "dist:win-setup": "electron-builder --win nsis",
+    "dist:win": "electron-builder --win nsis",
+    "dist:win-portable": "electron-builder --win portable",
     "dist:winzip": "electron-builder --win portable zip",
     "dist:linux": "electron-builder --linux AppImage",
     "dist:mac": "electron-builder --mac dmg"
@@ -46,7 +46,7 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
@@ -61,10 +61,21 @@
       "unpackDirName": "SorviaBotSwarm"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": false,
+      "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
+      "runAfterFinish": false,
+      "license": "build/eula.txt",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "include": "build/installer.nsh",
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "menuCategory": false,
+      "installerLanguages": ["en_US"],
+      "multiLanguageInstaller": false,
       "artifactName": "Sorvia-BotSwarm-${version}-setup.exe",
       "shortcutName": "Sorvia BotSwarm"
     },
