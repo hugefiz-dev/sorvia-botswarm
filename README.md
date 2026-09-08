@@ -45,7 +45,8 @@ optimization advice.
 
 ### Test tab
 - Connect bots by **IP / port / version** — up to **100** (hard cap).
-- **Join interval** in seconds (`0` = all at once).
+- **Sequential join** — bots connect **one at a time** (each waits until the previous is in),
+  which spreads the load so the UI never freezes. The **join interval** adds extra spacing.
 - **Chunk / render distance** per bot.
 - **Duration** up to **60 min** (fixed ceiling to prevent misuse).
 - **Ownership confirmation** gate — the test won't start until you confirm.
@@ -77,9 +78,9 @@ optimization advice.
 
 ### General
 - **First-run language picker** (English screen), remembered afterward. **TR / EN** UI.
-- Modern animated interface, custom bot icon.
-- Version list refreshes from **Mojang** on each launch (intersected with the engine's
-  supported versions — new releases appear without an app update).
+- Animated loading screen; modern animated interface; embedded bot icon.
+- Version list refreshes from **Mojang** on each launch (intersected with the versions the bot
+  engine can actually connect with — new releases appear without an app update).
 - Settings are saved to a hidden per-user folder (see below).
 
 ---
@@ -88,11 +89,12 @@ optimization advice.
 
 - **[Electron](https://www.electronjs.org/)** — desktop shell + UI (renderer).
 - **[mineflayer](https://github.com/PrismarineJS/mineflayer)** — the bot client engine
-  (runs in the main process).
+  (loaded lazily on first test, runs in the main process).
 - **[mineflayer-pathfinder](https://github.com/PrismarineJS/mineflayer-pathfinder)** — the
   "AI" obstacle-avoiding movement.
 - **[minecraft-protocol](https://github.com/PrismarineJS/node-minecraft-protocol)** — server
-  ping for the Analysis tab.
+  ping (Analysis tab) and the authoritative list of connectable versions.
+- **[protobufjs](https://github.com/protobufjs/protobuf.js)** — decodes Spark profiler reports.
 
 ---
 
@@ -111,50 +113,56 @@ npm start
 
 ---
 
-## 📦 Build a standalone app (no install for end users)
+## 📦 Build & install
 
 First install dependencies once: `npm install`.
 
-### Windows — portable `.exe`
+### Windows — installer `setup.exe` (recommended)
 ```bash
 npm run dist:win
 ```
-Output: `dist/Sorvia-BotSwarm-1.1.0-portable.exe` — double-click, no install, no admin prompt.
+Output: `dist/Sorvia-BotSwarm-1.2.0-setup.exe`
 
-> **Startup speed:** a portable exe unpacks itself before the window can appear. This build
-> unpacks to a **fixed folder** (`%TEMP%\SorviaBotSwarm`) and reuses it, so only the **first**
-> launch takes a few seconds — later launches are fast. For the fastest possible startup on
-> every launch, use the installer below.
+A clean English setup wizard:
+- shows a **license / terms** page you must accept,
+- installs **per-user** (no admin prompt) and adds a **Start-menu** entry,
+- on the final page lets you choose, via checkboxes, whether to **Launch Sorvia BotSwarm**
+  and **Create a desktop shortcut** — neither is forced.
 
-### Windows — installer (`setup.exe`, fastest launches)
-```bash
-npm run dist:win-setup
-```
-Output: `dist/Sorvia-BotSwarm-1.1.0-setup.exe` — installs once (per-user, no admin), then the app
-opens instantly every time (nothing to unpack at launch).
+After installing, the app opens **instantly** on every launch (nothing to unpack).
+A one-click helper is included: run **`build-win.bat`**.
 
 > **Windows build note:** electron-builder unpacks a signing archive that contains symlinks.
 > If the build fails with *"cannot create symbolic link"*, either run the terminal / `build-win.bat`
 > **as Administrator**, or enable **Windows Developer Mode**
-> (*Settings → Privacy & security → For developers → Developer Mode: On*). A one-click
-> `build-win.bat` is included.
+> (*Settings → Privacy & security → For developers → Developer Mode: On*).
+
+### Windows — portable `.exe` (no install)
+```bash
+npm run dist:win-portable
+```
+Output: `dist/Sorvia-BotSwarm-1.2.0-portable.exe` — double-click, no install, no admin.
+The first launch unpacks to a fixed folder (`%TEMP%\SorviaBotSwarm`) and reuses it, so only the
+first launch takes a few seconds; later launches are fast. (The installer above is faster still.)
 
 ### Linux — `AppImage`
 ```bash
 npm run dist:linux
 ```
-Output: `dist/Sorvia-BotSwarm-1.1.0.AppImage`
+Output: `dist/Sorvia-BotSwarm-1.2.0.AppImage`
 ```bash
-chmod +x Sorvia-BotSwarm-1.1.0.AppImage
-./Sorvia-BotSwarm-1.1.0.AppImage
+chmod +x dist/Sorvia-BotSwarm-1.2.0.AppImage
+./dist/Sorvia-BotSwarm-1.2.0.AppImage
 ```
+If you hit a FUSE error on newer distros, run with `--appimage-extract-and-run` or install
+`libfuse2`. You can also just run from source with `npm start`.
 
 ### macOS — `.dmg`
 ```bash
 npm run dist:mac
 ```
 
-> Cross-building (e.g. making the Windows `.exe` on Linux) requires **Wine** and is not
+> Cross-building (e.g. making the Windows `.exe` on Linux) needs **Wine** and isn't
 > recommended. Build each OS's package on that OS (or via CI).
 
 ---
@@ -171,12 +179,14 @@ npm run dist:mac
 
 ## 🚀 Usage
 
-**Load test:** fill server IP/port/version → set bot count, join interval, chunks, duration,
-AI, resilience → build your scenario tree → tick the ownership confirmation → **Start**.
-Watch the live console and stats; the run stops itself at the duration limit.
+**Load test:** fill server IP/port/version (or leave version on **Auto**) → set bot count,
+join interval, chunks, duration, AI, resilience → build your scenario tree → tick the
+ownership confirmation → **Start**. Watch the live console and stats; the run stops itself at
+the duration limit.
 
-**Analyze:** open the **Analysis** tab → **Get Info** to ping the server → run `/spark tps`
-and `/spark health` in-game and paste the output → **Read** → **Generate Advice**.
+**Analyze:** open the **Analysis** tab → **Get Info** to ping the server → either paste a
+`/spark profiler` link, or run `/spark tps` + `/spark health` in-game and paste the text →
+**Read** → **Generate Advice**.
 
 ---
 
@@ -199,17 +209,18 @@ sorvia-botswarm/
 ├─ src/
 │  ├─ main.js          # Electron main process, IPC, window, settings, ping/advisor IPC
 │  ├─ preload.js       # secure contextBridge API
-│  ├─ bot-manager.js   # bot swarm engine: spawn, scenarios, respawn, reconnect, caps
-│  ├─ versions.js      # Mojang manifest ∩ engine-supported versions
+│  ├─ bot-manager.js   # bot swarm engine: sequential join, scenarios, respawn, reconnect, caps
+│  ├─ versions.js      # connectable version list (minecraft-protocol) ∩ Mojang manifest
 │  ├─ advisor.js       # Spark text parsing + rules-based optimization advice
 │  ├─ spark-fetch.js   # download + decode /spark profiler reports (protobuf)
 │  └─ smoke.js         # headless sanity test (npm run smoke)
 ├─ renderer/
-│  ├─ index.html       # UI markup (tabs, splash, scenario tree, analysis)
+│  ├─ index.html       # UI markup (loader, splash, tabs, scenario tree, analysis)
 │  ├─ styles.css       # theme + animations
 │  ├─ app.js           # UI logic, IPC calls, i18n, console
 │  └─ i18n.js          # TR / EN strings
 ├─ assets/             # icon.svg / icon.png / icon.ico
+├─ build/              # installer resources (eula.txt, installer.nsh, sidebar/header bitmaps)
 ├─ screenshots/        # images used in this README
 ├─ build-win.bat       # one-click Windows build helper
 ├─ package.json
@@ -221,12 +232,14 @@ sorvia-botswarm/
 
 ## ⚠️ Notes & limitations
 
+- **Supported Minecraft versions:** the bot engine connects to versions up to the newest one
+  its libraries support (currently **26.1**). For a newer server (e.g. **26.2**), either install
+  **ViaVersion + ViaBackwards** on the server and pick **26.1** in the app, or run `npm update`
+  once PrismarineJS ships support — new versions then appear in the dropdown automatically.
 - Advice **text** is in English (config keys are universal); the UI is TR/EN.
 - The advisor reads either a **`/spark profiler` report link** (downloaded & decoded) or the
-  **text** of `/spark tps` + `/spark health`. Health-only and heap report links aren't used for
-  advice.
-- mineflayer can lag a few weeks behind the newest Minecraft release; `npm update` pulls
-  support as it lands.
+  **text** of `/spark tps` + `/spark health`. Heap and health-only links aren't used for advice.
+- The bot engine is loaded lazily (idle memory stays low) and released after a test stops.
 - AI pathfinding with many bots + large radius is CPU-heavy — lower the bot count/radius or
   turn AI off for heavy load.
 
