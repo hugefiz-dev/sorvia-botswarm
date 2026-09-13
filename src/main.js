@@ -12,6 +12,21 @@ const advisor = require('./advisor');
 // Allow manual GC so memory is reclaimed after a test is stopped.
 try { app.commandLine.appendSwitch('js-flags', '--expose-gc'); } catch (_) {}
 
+// Single instance: if the app is already open, focus that window instead of
+// starting a second copy.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+}
+
 let mcPing = null;
 let sparkFetch = null;
 function getPing() {
@@ -27,17 +42,43 @@ let mainWindow = null;
 let botManager = null;
 
 const BRAND = 'Sorvia Development Solutions by HugeFiz';
+const OPAQUE_BG = '#14100e';
+
+// Frosted (acrylic) window backdrops are a Windows 11 22H2+ feature. Anywhere
+// else the window stays solid and the UI is told so, instead of leaving the
+// user with a black or half-drawn background.
+function supportsAcrylic() {
+  if (process.platform !== 'win32') return false;
+  const build = parseInt(String(require('os').release()).split('.')[2], 10);
+  return isFinite(build) && build >= 22621;
+}
 
 function createWindow() {
+  // Windows only accepts the acrylic backdrop while a window is being created —
+  // switching it on later leaves the window black (verified on Windows 11). So
+  // the window is ALWAYS created glass-capable, and the page decides how much
+  // shows through: while the theme's transparency is 0 the page paints itself
+  // fully opaque and the app looks exactly like a solid window.
+  const glass = supportsAcrylic();
+
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 780,
     minWidth: 940,
     minHeight: 640,
-    backgroundColor: '#14100e',
+    // Transparent window background + acrylic = the desktop behind shows
+    // through, blurred by Windows. Opaque colour when the feature is off.
+    backgroundColor: glass ? '#00000000' : OPAQUE_BG,
+    ...(glass ? { backgroundMaterial: 'acrylic' } : {}),
     title: 'Sorvia BotSwarm',
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
-    frame: false,
+    // The window keeps its native frame (resize borders, rounded corners, drop
+    // shadow) with the title bar hidden, so the app draws its own title bar as
+    // before. This is NOT cosmetic: Windows paints the acrylic backdrop into a
+    // window's frame, so a fully frameless window can never be frosted — it
+    // just renders black behind the page. Verified both ways on Windows 11.
+    frame: true,
+    titleBarStyle: 'hidden',
     show: false, // shown on ready-to-show to avoid a white flash
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -108,8 +149,20 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+// Shutting down a big swarm means telling up to 1000 bots to quit and letting
+// their sockets close. An installer or updater that asks us to close gives the
+// process a few seconds before it gives up and tells the user the app "cannot
+// be closed", so teardown never gets to hold the process open: whatever is
+// still finishing, the process exits.
+let quitting = false;
 app.on('before-quit', () => {
+  if (quitting) return;
+  quitting = true;
   if (botManager) botManager.stopAll('app-quit');
+  const bail = setTimeout(() => {
+    try { app.exit(0); } catch (_) { process.exit(0); }
+  }, 1500);
+  if (bail.unref) bail.unref(); // a clean exit still happens immediately
 });
 
 /* ------------------------- IPC: window controls ------------------------- */
@@ -120,6 +173,25 @@ ipcMain.handle('win:maximize', () => {
   else mainWindow.maximize();
 });
 ipcMain.handle('win:close', () => mainWindow && mainWindow.close());
+
+// Window transparency (theme panel): 0 = solid, 60 = as see-through as it gets.
+// The window itself is never faded — that would wash out the panels and the
+// text with it. Instead the page paints a see-through background (the renderer
+// lowers --page-alpha) and the window is told to frost whatever is behind it,
+// so the desktop shows through blurred. Windows 11 does the blur natively via
+// the acrylic backdrop material; elsewhere the call is a no-op and the page
+// simply looks darker, which is why the slider is capped well short of 100.
+ipcMain.handle('win:setTransparency', (_e, value) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: false };
+  let v = Number(value);
+  if (!isFinite(v)) v = 0;
+  v = Math.max(0, Math.min(90, v));
+  try { mainWindow.setOpacity(1); } catch (_) {} // undo the old whole-window fade
+  // Nothing to switch here: the backdrop was decided when the window was
+  // created. This only tells the renderer whether it may go see-through, so a
+  // machine without the frosting keeps a solid page instead of a black hole.
+  return { ok: true, transparency: supportsAcrylic() ? v : 0, material: supportsAcrylic() ? 'acrylic' : 'unsupported' };
+});
 
 /* ------------------------- IPC: meta ------------------------- */
 ipcMain.handle('app:meta', () => ({
@@ -189,6 +261,11 @@ ipcMain.handle('analyze:advise', (_e, input) => advisor.advise(input));
 ipcMain.handle('analyze:fetchSpark', (_e, url) => getSparkFetch().fetchSparkReport(url));
 
 /* ------------------------- IPC: test control ------------------------- */
+ipcMain.handle('test:update', async (_e, config) => {
+  if (!botManager) return { ok: false, error: 'not-ready' };
+  return botManager.update(config);
+});
+
 ipcMain.handle('test:start', async (_e, config) => {
   if (!botManager) return { ok: false, error: 'not-ready' };
   return botManager.start(config);

@@ -1,7 +1,7 @@
 {
   "name": "sorvia-botswarm",
   "productName": "Sorvia BotSwarm",
-  "version": "1.2.0",
+  "version": "1.2.5",
   "description": "Minecraft server bot load & optimization testing tool (own-server testing)",
   "author": "Sorvia Development Solutions",
   "license": "MIT",

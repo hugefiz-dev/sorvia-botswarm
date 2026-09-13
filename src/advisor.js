@@ -15,10 +15,10 @@
 
 function detectServerType(name) {
   const s = String(name || '').toLowerCase();
-  if (s.includes('purpur')) return 'purpur';
-  if (s.includes('paper')) return 'paper';
-  if (s.includes('pufferfish')) return 'pufferfish';
   if (s.includes('folia')) return 'folia';
+  if (s.includes('purpur')) return 'purpur';
+  if (s.includes('pufferfish')) return 'pufferfish';
+  if (s.includes('paper')) return 'paper';
   if (s.includes('spigot')) return 'spigot';
   if (s.includes('fabric')) return 'fabric';
   if (s.includes('forge')) return 'forge';
@@ -116,6 +116,10 @@ function advise(input) {
     add(1, 'platform', 'Add Fabric performance mods',
       'Lithium, FerriteCore, Krypton and C2ME dramatically reduce MSPT and memory on Fabric.',
       'Lithium + FerriteCore + Krypton + C2ME (ModRinth).');
+  } else if (type === 'folia') {
+    add(1, 'platform', 'Folia — regionised multithreading',
+      'Folia splits the world into independently ticked regions across threads, so a single global TPS/MSPT number is misleading — watch per-region timings and CPU across cores. Make sure every plugin you run is Folia-compatible (most legacy Bukkit plugins are NOT). Spreading players/activity across regions helps more than raising a single region.',
+      'global.yml / config: tune threads to your real core count; keep view/simulation-distance moderate per region.');
   }
 
   // --- RAM / JVM ---
@@ -144,7 +148,7 @@ function advise(input) {
       `view-distance ${view} is generous. 8–10 is a good balance.`,
       'view-distance=10');
   }
-  if (sim === 0 && (type === 'paper' || type === 'purpur' || type === 'pufferfish')) {
+  if (sim === 0 && (type === 'paper' || type === 'purpur' || type === 'pufferfish' || type === 'folia')) {
     add(1, 'chunks', 'Set simulation-distance lower than view-distance',
       'simulation-distance controls where entities/redstone/tick logic runs. Keeping it low (e.g. 4–6) saves a lot of MSPT while players still SEE far.',
       'server.properties: simulation-distance=5');
@@ -166,7 +170,7 @@ function advise(input) {
   }
 
   // --- Baseline Paper/Purpur tuning reminder ---
-  if (type === 'paper' || type === 'purpur' || type === 'pufferfish') {
+  if (type === 'paper' || type === 'purpur' || type === 'pufferfish' || type === 'folia') {
     add(0, 'config', 'Verify the key Paper/Purpur optimizations',
       'Defaults run, but a load test benefits from tuned entity activation ranges, mob spawn caps, hopper optimizations and item-despawn rates. Check these before adding players.',
       'paper-world-defaults.yml: entities.spawning (mob caps), entities.entity-activation-range; hopper.disable-move-event=true; alt-item-despawn-rate');

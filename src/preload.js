@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   winMinimize: () => ipcRenderer.invoke('win:minimize'),
   winMaximize: () => ipcRenderer.invoke('win:maximize'),
   winClose: () => ipcRenderer.invoke('win:close'),
+  setWindowTransparency: (value) => ipcRenderer.invoke('win:setTransparency', value),
 
   // meta / info
   meta: () => ipcRenderer.invoke('app:meta'),
@@ -27,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // test control
   startTest: (config) => ipcRenderer.invoke('test:start', config),
+  updateTest: (config) => ipcRenderer.invoke('test:update', config),
   stopTest: () => ipcRenderer.invoke('test:stop'),
   testStatus: () => ipcRenderer.invoke('test:status'),
 

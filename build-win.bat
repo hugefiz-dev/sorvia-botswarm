@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  Sorvia MC LoadTester - Windows portable exe builder
+REM  Sorvia BotSwarm - Windows installer builder
 REM  Sorvia Development Solutions by HugeFiz
 REM  Requires: Node.js (https://nodejs.org)
 REM ============================================================
@@ -22,7 +22,7 @@ echo [2/2] Building installer (setup.exe)...
 call npm run dist:win || (echo. & echo BUILD FAILED. & pause & exit /b 1)
 echo.
 echo ============================================================
-echo  DONE. Installer:  dist\Sorvia-BotSwarm-1.2.0-setup.exe
+echo  DONE. Installer:  dist\Sorvia-BotSwarm-1.2.5-setup.exe
 echo  (Portable instead:  npm run dist:win-portable)
 echo ============================================================
 pause

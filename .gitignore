@@ -20,3 +20,15 @@ Thumbs.db
 # editor
 .vscode/
 .idea/
+
+# AI assistant / local context (never push to GitHub)
+# CLAUDE.md = the full project brief, read automatically by Claude Code. Local only.
+.claude/
+.claude*/
+CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+.aider*
+.cursor/
+.cursorrules
+.github/copilot-instructions.md

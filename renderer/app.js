@@ -7,6 +7,109 @@ let settingsLoaded = false;
 const T = (k) => (window.I18N[lang] && window.I18N[lang][k]) || k;
 const $ = (id) => document.getElementById(id);
 
+/* ------------------------------ theme ----------------------------------- */
+const THEME_DEFAULT = { accent: '#ff7a18', bg: '#14100e', opacity: 72, winTransparency: 0, particles: true };
+let theme = Object.assign({}, THEME_DEFAULT);
+let particlesOn = true;
+let particleRgb = { r: 255, g: 150, b: 40 }; // background canvas follows the accent
+let fxAlpha = 1; // background effects fade out as the window turns to glass
+let lastWinTransparency = null;
+let winTransparencyWarned = false;
+
+function hexToRgb(h) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(h || ''));
+  return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : { r: 20, g: 16, b: 14 };
+}
+function lighten(hex, amt) {
+  const c = hexToRgb(hex);
+  const f = (v) => Math.max(0, Math.min(255, Math.round(v + amt)));
+  return `#${[f(c.r), f(c.g), f(c.b)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+function applyTheme() {
+  const root = document.documentElement.style;
+  const a = theme.accent || THEME_DEFAULT.accent;
+  const a2 = lighten(a, 30);
+  const deep = lighten(a, -40);
+  // Only the colour variables are set here — the gradients, the page
+  // background and the glows are all derived from them in CSS, so a change
+  // animates everywhere at once (see the @property block in styles.css).
+  root.setProperty('--accent', a);
+  root.setProperty('--accent2', a2);
+  root.setProperty('--accent-deep', deep);
+  const bg = hexToRgb(theme.bg || THEME_DEFAULT.bg);
+  root.setProperty('--bg', theme.bg || THEME_DEFAULT.bg);
+  root.setProperty('--bg-hi', lighten(theme.bg || THEME_DEFAULT.bg, 22));
+  const op = Math.max(0.3, Math.min(1, (Number(theme.opacity) || 72) / 100));
+  root.setProperty('--panel', `rgba(${bg.r},${bg.g},${bg.b},${op})`);
+  const brd = hexToRgb(a);
+  root.setProperty('--panel-brd', `rgba(${brd.r},${brd.g},${brd.b},0.16)`);
+  // Text/icon colour that stays readable on top of the accent colour.
+  const lum = (0.2126 * brd.r + 0.7152 * brd.g + 0.0722 * brd.b) / 255;
+  root.setProperty('--on-accent', lum > 0.55 ? '#1a0f08' : '#ffffff');
+  particleRgb = hexToRgb(a2);
+  particlesOn = theme.particles !== false;
+  applyWindowTransparency();
+}
+// Window transparency: the app's BACKGROUND becomes see-through (panels, text
+// and buttons keep their own opacity), and the frosting grows with it — the
+// page blurs its own backdrop, and the main process asks the OS to blur the
+// desktop behind the window. Capped at 60 so the app never disappears.
+function applyWindowTransparency() {
+  const v = Math.max(0, Math.min(90, Number(theme.winTransparency) || 0));
+  if (v === lastWinTransparency) return;
+  lastWinTransparency = v;
+  // The page only goes see-through once the main process confirms the OS will
+  // frost what's behind the window. Otherwise the hole would show as a black
+  // rectangle instead of the desktop, so the app stays solid and says why.
+  Promise.resolve()
+    .then(() => api.setWindowTransparency(v))
+    .then((res) => {
+      const applied = res && res.material === 'acrylic' ? v : 0;
+      const root = document.documentElement.style;
+      // The slider IS the percentage: at 90 the page keeps a tenth of its own
+      // background and the rest is the frosted desktop behind the window.
+      root.setProperty('--page-alpha', (1 - applied / 100).toFixed(3));
+      root.setProperty('--page-blur', (applied * 0.25).toFixed(1) + 'px');
+      root.setProperty('--panel-blur', (14 + applied * 0.35).toFixed(1) + 'px');
+      // Glows and particles are painted ON the background; they'd sit in front
+      // of the glass like smudges, so they fade out as it clears.
+      root.setProperty('--fx-alpha', (1 - applied / 100).toFixed(3));
+      fxAlpha = 1 - applied / 100;
+      if (v > 0 && !applied && !winTransparencyWarned) {
+        winTransparencyWarned = true;
+        logLocal('warn', T('win_transparency_unsupported'));
+      }
+    })
+    .catch(() => {});
+}
+function syncThemeControls() {
+  if ($('tpAccent')) $('tpAccent').value = theme.accent;
+  if ($('tpBg')) $('tpBg').value = theme.bg;
+  if ($('tpOpacity')) $('tpOpacity').value = theme.opacity;
+  if ($('tpWinTransparency')) $('tpWinTransparency').value = theme.winTransparency != null ? theme.winTransparency : 0;
+  if ($('tpParticles')) $('tpParticles').checked = theme.particles !== false;
+}
+function wireTheme() {
+  $('themeBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const p = $('themePanel'); p.hidden = !p.hidden; if (!p.hidden) syncThemeControls();
+  });
+  document.addEventListener('click', (e) => {
+    const p = $('themePanel');
+    if (!p.hidden && !p.contains(e.target) && e.target.id !== 'themeBtn') p.hidden = true;
+  });
+  $('tpPresets').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-accent]'); if (!b) return;
+    theme.accent = b.dataset.accent; applyTheme(); syncThemeControls(); persist();
+  });
+  $('tpAccent').addEventListener('input', () => { theme.accent = $('tpAccent').value; applyTheme(); persist(); });
+  $('tpBg').addEventListener('input', () => { theme.bg = $('tpBg').value; applyTheme(); persist(); });
+  $('tpOpacity').addEventListener('input', () => { theme.opacity = +$('tpOpacity').value; applyTheme(); persist(); });
+  $('tpWinTransparency').addEventListener('input', () => { theme.winTransparency = +$('tpWinTransparency').value; applyTheme(); persist(); });
+  $('tpParticles').addEventListener('change', () => { theme.particles = $('tpParticles').checked; applyTheme(); persist(); });
+  $('tpReset').addEventListener('click', () => { theme = Object.assign({}, THEME_DEFAULT); applyTheme(); syncThemeControls(); persist(); });
+}
+
 /* ------------------------------ i18n apply ------------------------------ */
 function applyLang() {
   document.documentElement.lang = lang;
@@ -70,13 +173,15 @@ $('refreshVersions').onclick = () => loadVersions($('version').value);
 /* ------------------------------ scenarios ------------------------------- */
 const DEFAULTS = {
   wait: { type: 'wait', seconds: 5 }, chat: { type: 'chat', text: '' },
-  roam: { type: 'roam', radius: 100, seconds: 30 }, jump: { type: 'jump', seconds: 3 }, look: { type: 'look', seconds: 5 }
+  roam: { type: 'roam', radius: 100, seconds: 30 }, jump: { type: 'jump', seconds: 3 }, look: { type: 'look', seconds: 5 },
+  goto: { type: 'goto', x: 0, y: 64, z: 0 }, chestclick: { type: 'chestclick', slot: 0 },
+  reconnect: { type: 'reconnect', seconds: 3 }
 };
-const ICONS = { wait: '⏱', chat: '💬', roam: '🧭', jump: '⤴', look: '👁' };
+const ICONS = { wait: '⏱', chat: '💬', roam: '🧭', jump: '⤴', look: '👁', goto: '🎯', chestclick: '📦', reconnect: '🔌' };
 let scenarios = [
   { type: 'wait', seconds: 5 }, { type: 'chat', text: '/spawn' }, { type: 'roam', radius: 100, seconds: 60 }
 ];
-function stepName(t) { return { wait: T('s_wait'), chat: T('s_chat'), roam: T('s_roam'), jump: T('s_jump'), look: T('s_look') }[t] || t; }
+function stepName(t) { return { wait: T('s_wait'), chat: T('s_chat'), roam: T('s_roam'), jump: T('s_jump'), look: T('s_look'), goto: T('s_goto'), chestclick: T('s_chestclick'), reconnect: T('s_reconnect') }[t] || t; }
 
 function numberField(labelKey, value, onInput, attrs = {}) {
   const wrap = document.createElement('label'); wrap.className = 'sf';
@@ -93,6 +198,10 @@ function textField(labelKey, value, onInput) {
   inp.addEventListener('input', () => { onInput(inp.value); persist(); });
   wrap.append(span, inp); return wrap;
 }
+// A full-width note under a step's inputs (e.g. the chat placeholders).
+function fieldHint(key) {
+  const d = document.createElement('div'); d.className = 'sf-hint'; d.textContent = T(key); return d;
+}
 function renderScenarios() {
   const tree = $('scenarioTree'); if (!tree) return; tree.innerHTML = '';
   if (!scenarios.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = T('empty_scenarios'); tree.appendChild(e); return; }
@@ -106,9 +215,12 @@ function renderScenarios() {
     if (i === scenarios.length - 1) node.classList.add('last');
     const fields = node.querySelector('.step-fields');
     if (step.type === 'wait') fields.append(numberField('f_seconds', step.seconds, (v) => (step.seconds = +v), { min: 0 }));
-    else if (step.type === 'chat') fields.append(textField('f_text', step.text, (v) => (step.text = v)));
+    else if (step.type === 'chat') fields.append(textField('f_text', step.text, (v) => (step.text = v)), fieldHint('chat_coords_hint'));
     else if (step.type === 'roam') fields.append(numberField('f_radius', step.radius, (v) => (step.radius = +v), { min: 1, max: 256 }), numberField('f_seconds', step.seconds, (v) => (step.seconds = +v), { min: 1 }));
     else if (step.type === 'jump' || step.type === 'look') fields.append(numberField('f_seconds', step.seconds, (v) => (step.seconds = +v), { min: 1 }));
+    else if (step.type === 'goto') fields.append(numberField('f_x', step.x, (v) => (step.x = +v)), numberField('f_y', step.y, (v) => (step.y = +v)), numberField('f_z', step.z, (v) => (step.z = +v)));
+    else if (step.type === 'chestclick') fields.append(numberField('f_slot', step.slot, (v) => (step.slot = +v), { min: 0 }));
+    else if (step.type === 'reconnect') fields.append(numberField('f_rejoin_after', step.seconds, (v) => (step.seconds = +v), { min: 0 }));
     node.querySelector('.step-del').onclick = () => { scenarios.splice(i, 1); renderScenarios(); persist(); };
     node.addEventListener('dragstart', (e) => { node.classList.add('dragging'); e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; });
     node.addEventListener('dragend', () => node.classList.remove('dragging'));
@@ -140,7 +252,17 @@ function makeLine(it) {
   line.querySelector('.cl-msg').textContent = it.msg;
   return line;
 }
-function queueLogs(items) { for (const it of items) logQueue.push(it); if (!rafPending) { rafPending = true; requestAnimationFrame(flushLogs); } }
+function queueLogs(items) {
+  for (const it of items) logQueue.push(it);
+  // A large swarm can out-produce the DOM. Keep the newest lines and say how
+  // many were skipped, rather than letting the panel fall behind the test.
+  if (logQueue.length > 600) {
+    const dropped = logQueue.length - 600;
+    logQueue = logQueue.slice(-600);
+    logQueue.unshift({ level: 'warn', msg: `… ${dropped} ${T('log_skipped')}`, ts: Date.now() });
+  }
+  if (!rafPending) { rafPending = true; requestAnimationFrame(flushLogs); }
+}
 function flushLogs() {
   rafPending = false; if (!logQueue.length) return;
   const items = logQueue; logQueue = [];
@@ -161,6 +283,7 @@ function updateStartEnabled() { $('startBtn').disabled = running || !$('ownConfi
 function setRunningUI(on) {
   running = on;
   $('stopBtn').disabled = !on;
+  $('updateBtn').disabled = !on;
   $('statusDot').classList.toggle('live', on);
   updateStartEnabled(); refreshStatusText();
 }
@@ -184,21 +307,30 @@ api.onBotEvent((ev) => {
 });
 
 /* ------------------------------ start/stop ------------------------------ */
+function buildConfig() {
+  return {
+    host: $('host').value.trim(), port: parseInt($('port').value, 10) || 25565, version: $('version').value,
+    count: parseInt($('count').value, 10) || 1, joinDelay: parseFloat($('joinDelay').value) || 0,
+    viewDistance: parseInt($('viewDistance').value, 10) || 4, durationMin: parseFloat($('durationMin').value) || 5,
+    autoRespawn: $('resilience').checked, autoReconnect: $('resilience').checked,
+    usernamePrefix: $('usernamePrefix').value || 'LoadBot', loopScenarios: $('loopScenarios').checked, scenarios
+  };
+}
 $('startBtn').onclick = async () => {
   const host = $('host').value.trim();
   if (!host) { logLocal('error', T('err_no_host')); shake($('host')); return; }
   if (!$('ownConfirm').checked) { logLocal('error', T('err_own')); shake($('ownWrap')); return; }
-  const config = {
-    host, port: parseInt($('port').value, 10) || 25565, version: $('version').value,
-    count: parseInt($('count').value, 10) || 1, joinDelay: parseFloat($('joinDelay').value) || 0,
-    viewDistance: parseInt($('viewDistance').value, 10) || 4, durationMin: parseFloat($('durationMin').value) || 5,
-    ai: $('ai').checked, autoRespawn: $('resilience').checked, autoReconnect: $('resilience').checked,
-    usernamePrefix: $('usernamePrefix').value || 'LoadBot', loopScenarios: $('loopScenarios').checked, scenarios
-  };
   persist();
   logLocal('info', T('starting'));
-  const res = await api.startTest(config);
+  const res = await api.startTest(buildConfig());
   if (!res || !res.ok) logLocal('error', res && res.error ? res.error : 'start-failed');
+};
+$('updateBtn').onclick = async () => {
+  if (!running) return;
+  const res = await api.updateTest(buildConfig());
+  if (!res || !res.ok) logLocal('error', res && res.error ? res.error : 'update-failed');
+  else logLocal('ok', T('updated'));
+  persist();
 };
 $('stopBtn').onclick = async () => { await api.stopTest(); logLocal('warn', T('stopped_by_user')); };
 function shake(el) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
@@ -400,9 +532,9 @@ function collect() {
     lang,
     host: $('host').value, port: $('port').value, version: $('version').value,
     count: $('count').value, joinDelay: $('joinDelay').value, viewDistance: $('viewDistance').value,
-    durationMin: $('durationMin').value, ai: $('ai').checked, resilience: $('resilience').checked,
+    durationMin: $('durationMin').value, resilience: $('resilience').checked,
     usernamePrefix: $('usernamePrefix').value, loopScenarios: $('loopScenarios').checked,
-    ownConfirm: $('ownConfirm').checked, scenarios,
+    ownConfirm: $('ownConfirm').checked, scenarios, theme,
     aHost: $('aHost').value, aPort: $('aPort').value, aType: $('aType').value, aRam: $('aRam').value,
     aPlayers: $('aPlayers').value, aIssue: $('aIssue').value, aView: $('aView').value, aSim: $('aSim').value, aFlags: $('aFlags').checked
   };
@@ -414,7 +546,17 @@ function applySettings(s) {
   const setC = (id, v) => { if (v != null && $(id)) $(id).checked = !!v; };
   setV('host', s.host); setV('port', s.port); setV('count', s.count); setV('joinDelay', s.joinDelay);
   setV('viewDistance', s.viewDistance); setV('durationMin', s.durationMin); setV('usernamePrefix', s.usernamePrefix);
-  setC('ai', s.ai); setC('resilience', s.resilience); setC('loopScenarios', s.loopScenarios); setC('ownConfirm', s.ownConfirm);
+  setC('resilience', s.resilience); setC('loopScenarios', s.loopScenarios); setC('ownConfirm', s.ownConfirm);
+  if (s.theme) {
+    theme = Object.assign(theme, s.theme);
+    // Migrate the old whole-window opacity slider (40–100, higher = solid) to
+    // the transparency it means now (0–60, higher = more see-through).
+    if (theme.winTransparency == null && s.theme.winOpacity != null) {
+      theme.winTransparency = Math.max(0, Math.min(60, 100 - Number(s.theme.winOpacity)));
+    }
+    delete theme.winOpacity;
+    applyTheme(); syncThemeControls();
+  }
   setV('aHost', s.aHost); setV('aPort', s.aPort); setV('aType', s.aType); setV('aRam', s.aRam);
   setV('aPlayers', s.aPlayers); setV('aIssue', s.aIssue); setV('aView', s.aView); setV('aSim', s.aSim); setC('aFlags', s.aFlags);
   if (Array.isArray(s.scenarios) && s.scenarios.length) scenarios = s.scenarios;
@@ -433,18 +575,21 @@ document.addEventListener('change', persist);
     parts = Array.from({ length: n }, () => ({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 0.22, vy: (Math.random() - 0.5) * 0.22, r: Math.random() * 1.6 + 0.4 }));
   }
   resize(); window.addEventListener('resize', resize);
+  let cleared = false;
   function tick() {
     requestAnimationFrame(tick);
     if (document.hidden) return; // save CPU when not visible
+    if (!particlesOn) { if (!cleared) { ctx.clearRect(0, 0, w, h); cleared = true; } return; }
+    cleared = false;
     ctx.clearRect(0, 0, w, h);
     for (const p of parts) {
       p.x += p.vx; p.y += p.vy;
       if (p.x < 0 || p.x > w) p.vx *= -1; if (p.y < 0 || p.y > h) p.vy *= -1;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,150,40,0.35)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = `rgba(${particleRgb.r},${particleRgb.g},${particleRgb.b},${0.35 * fxAlpha})`; ctx.fill();
     }
     for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
       const a = parts[i], b = parts[j]; const dx = a.x - b.x, dy = a.y - b.y; const d2 = dx * dx + dy * dy;
-      if (d2 < 15000) { ctx.strokeStyle = `rgba(255,120,30,${0.12 * (1 - d2 / 15000)})`; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+      if (d2 < 15000) { ctx.strokeStyle = `rgba(${particleRgb.r},${particleRgb.g},${particleRgb.b},${0.12 * fxAlpha * (1 - d2 / 15000)})`; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
     }
   }
   tick();
@@ -465,6 +610,8 @@ function hideLoader() {
 }
 
 async function init() {
+  wireTheme();
+  applyTheme(); // defaults first; applySettings() overrides if the user saved a theme
   let s = {};
   try { s = await api.getSettings(); } catch (_) {}
   if (s && s.lang) {
