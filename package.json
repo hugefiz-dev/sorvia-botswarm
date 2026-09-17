@@ -95,6 +95,9 @@
       ],
       "icon": "assets/icon.png",
       "category": "public.app-category.developer-tools"
+    },
+    "dmg": {
+      "artifactName": "Sorvia-BotSwarm-${version}.dmg"
     }
   }
 }
