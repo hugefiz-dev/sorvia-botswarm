@@ -177,7 +177,13 @@
     <section class="panel scenario-panel fade-in" style="animation-delay:.05s">
       <div class="panel-head">
         <h2 class="panel-title"><span class="dot"></span><span data-i18n="scenarios">Senaryolar</span></h2>
-        <label class="mini-toggle"><input type="checkbox" id="loopScenarios" checked /><span data-i18n="loop">Döngüde tekrarla</span></label>
+        <div class="head-tools">
+          <div class="undo-redo">
+            <button id="undoBtn" class="head-btn" type="button" data-i18n-title="undo" disabled>&#8630;</button>
+            <button id="redoBtn" class="head-btn" type="button" data-i18n-title="redo" disabled>&#8631;</button>
+          </div>
+          <label class="mini-toggle"><input type="checkbox" id="loopScenarios" checked /><span data-i18n="loop">Döngüde tekrarla</span></label>
+        </div>
       </div>
       <div class="scenario-tree" id="scenarioTree"></div>
       <div class="add-step">
@@ -310,7 +316,11 @@
 
   <template id="tpl-step">
     <div class="step" draggable="true">
-      <div class="step-grip">⋮⋮</div>
+      <div class="step-grip">
+        <button class="step-move step-up" type="button">&#9652;</button>
+        <span class="grip-dots">⋮⋮</span>
+        <button class="step-move step-down" type="button">&#9662;</button>
+      </div>
       <div class="step-branch"></div>
       <div class="step-body">
         <div class="step-head">

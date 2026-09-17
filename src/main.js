@@ -3,6 +3,7 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 
 const BotManager = require('./bot-manager');
 const versions = require('./versions');
@@ -40,36 +41,106 @@ function getSparkFetch() {
 
 let mainWindow = null;
 let botManager = null;
+let glassMode = null;       // what THIS window can do: acrylic | vibrancy | transparent
+let kdeBlurOn = false;      // KWin has been asked to frost behind this window
 
 const BRAND = 'Sorvia Development Solutions by HugeFiz';
 const OPAQUE_BG = '#14100e';
 
-// Frosted (acrylic) window backdrops are a Windows 11 22H2+ feature. Anywhere
-// else the window stays solid and the UI is told so, instead of leaving the
-// user with a black or half-drawn background.
-function supportsAcrylic() {
-  if (process.platform !== 'win32') return false;
-  const build = parseInt(String(require('os').release()).split('.')[2], 10);
-  return isFinite(build) && build >= 22621;
+// What kind of see-through window this OS can give us. Every platform needs a
+// different mechanism and none of them can be switched on after the window
+// exists, so this is decided once, before the window is created.
+//
+//   'acrylic'     Windows 11 22H2+ — the OS frosts the desktop behind the
+//                 window for us (DWM backdrop material).
+//   'vibrancy'    macOS — AppKit does the same through an NSVisualEffectView.
+//   'transparent' Linux — the window really is see-through. Blurring what is
+//                 behind it is the compositor's call, so the app asks KWin for
+//                 it directly (setKdeBlur); other compositors either do it on
+//                 their own terms (picom's blur-background) or not at all.
+//                 With no compositing window manager there is no ARGB visual
+//                 and a see-through page would paint over black instead of the
+//                 desktop — which is what --opaque is for.
+//   null          nothing available; the UI is told, and the page stays solid.
+function glassKind() {
+  // Escape hatch for a Linux session whose compositor cannot do ARGB: start
+  // the app once with --opaque (or SORVIA_OPAQUE=1) and it comes up solid.
+  // Quit the running copy first — a second launch only focuses the first one.
+  if (process.argv.includes('--opaque') || process.env.SORVIA_OPAQUE === '1') return null;
+  if (process.platform === 'win32') {
+    const build = parseInt(String(require('os').release()).split('.')[2], 10);
+    return isFinite(build) && build >= 22621 ? 'acrylic' : null;
+  }
+  if (process.platform === 'darwin') return 'vibrancy';
+  if (process.platform === 'linux') return 'transparent';
+  return null;
+}
+
+/* ------------------------- KDE / KWin frosting --------------------------
+ * Windows and macOS frost what is behind a translucent window by themselves.
+ * On Linux that is the compositor's call, and KWin takes it from a window
+ * property: set _KDE_NET_WM_BLUR_BEHIND_REGION and it blurs the desktop behind
+ * the window, clear it and it stops. Asking for that is a single xprop call —
+ * no native module and no extra dependency for a feature most users of this
+ * app will never switch on.
+ *
+ * Everything here fails quietly by design: a compositor that is not KWin
+ * ignores the property, a Wayland-native session has no X11 window to set it
+ * on, and a machine without xprop installed just never gets the blur. In all
+ * three cases the window is still see-through, only sharp instead of frosted,
+ * and the UI says so.
+ */
+const KDE_BLUR_PROP = '_KDE_NET_WM_BLUR_BEHIND_REGION';
+function x11WindowId() {
+  try {
+    const buf = mainWindow.getNativeWindowHandle();
+    if (!buf || buf.length < 4) return null;
+    const id = buf.readUInt32LE(0); // an X11 window id is 32 bits wide
+    return id ? '0x' + id.toString(16) : null;
+  } catch (_) { return null; }
+}
+function setKdeBlur(on) {
+  if (process.platform !== 'linux' || !mainWindow || mainWindow.isDestroyed()) return;
+  if (kdeBlurOn === !!on) return;
+  const id = x11WindowId();
+  if (!id) return;
+  // A region of zero rectangles means "all of it" to KWin.
+  const args = on
+    ? ['-id', id, '-f', KDE_BLUR_PROP, '32c', '-set', KDE_BLUR_PROP, '0']
+    : ['-id', id, '-remove', KDE_BLUR_PROP];
+  try {
+    // Synchronous on purpose: this runs at most twice in a session (the slider
+    // leaving 0 and coming back to it), and the answer decides what the UI
+    // tells the user, so it is worth the few milliseconds.
+    execFileSync('xprop', args, { timeout: 2000, stdio: 'ignore' });
+    kdeBlurOn = !!on;
+  } catch (_) {
+    kdeBlurOn = false; // no xprop, no X11 window, or KWin refused it
+  }
 }
 
 function createWindow() {
-  // Windows only accepts the acrylic backdrop while a window is being created —
-  // switching it on later leaves the window black (verified on Windows 11). So
-  // the window is ALWAYS created glass-capable, and the page decides how much
-  // shows through: while the theme's transparency is 0 the page paints itself
-  // fully opaque and the app looks exactly like a solid window.
-  const glass = supportsAcrylic();
+  // None of the see-through window modes can be switched on after the window
+  // exists — Windows accepts the acrylic backdrop only while the window is
+  // being created (switching it on later just leaves the window black,
+  // verified on Windows 11), and an ARGB visual has to be asked for the same
+  // way. So the mode is chosen here, once, and the page decides how much of it
+  // to use: while the theme's transparency is 0 the page paints itself fully
+  // opaque and the app looks exactly like a solid window.
+  glassMode = glassKind();
 
   mainWindow = new BrowserWindow({
     width: 1180,
     height: 780,
     minWidth: 940,
     minHeight: 640,
-    // Transparent window background + acrylic = the desktop behind shows
-    // through, blurred by Windows. Opaque colour when the feature is off.
-    backgroundColor: glass ? '#00000000' : OPAQUE_BG,
-    ...(glass ? { backgroundMaterial: 'acrylic' } : {}),
+    // A see-through page needs a window with nothing of its own painted behind
+    // it. macOS is the exception: Electron only gives the vibrancy view its
+    // transparent background when backgroundColor is left unset entirely.
+    ...(glassMode === 'vibrancy' ? {} : { backgroundColor: glassMode ? '#00000000' : OPAQUE_BG }),
+    ...(glassMode === 'acrylic' ? { backgroundMaterial: 'acrylic' } : {}),
+    ...(glassMode === 'vibrancy' ? { vibrancy: 'under-window', visualEffectState: 'followWindow' } : {}),
+    ...(glassMode === 'transparent' ? { transparent: true } : {}),
     title: 'Sorvia BotSwarm',
     icon: path.join(__dirname, '..', 'assets', 'icon.png'),
     // The window keeps its native frame (resize borders, rounded corners, drop
@@ -98,8 +169,12 @@ function createWindow() {
   // any renderer errors, then exits. Has no effect in normal use.
   if (process.env.SMOKE_BOOT) {
     let hadError = false;
-    mainWindow.webContents.on('console-message', (_e, level, message) => {
-      if (level >= 2) { hadError = true; console.error('[renderer]', message); }
+    // Electron 36 replaced the (event, level, message) arguments with a single
+    // event object carrying named fields; accept either shape.
+    mainWindow.webContents.on('console-message', (e, level, message) => {
+      const lvl = typeof level === 'number' ? level : ({ error: 3, warning: 2 }[e && e.level] || 0);
+      const msg = message != null ? message : (e && e.message);
+      if (lvl >= 2) { hadError = true; console.error('[renderer]', msg); }
     });
     mainWindow.webContents.on('render-process-gone', (_e, d) => {
       hadError = true; console.error('[render-process-gone]', d.reason);
@@ -174,29 +249,34 @@ ipcMain.handle('win:maximize', () => {
 });
 ipcMain.handle('win:close', () => mainWindow && mainWindow.close());
 
-// Window transparency (theme panel): 0 = solid, 60 = as see-through as it gets.
+// Window transparency (theme panel): 0 = solid, 90 = as see-through as it gets.
 // The window itself is never faded — that would wash out the panels and the
 // text with it. Instead the page paints a see-through background (the renderer
-// lowers --page-alpha) and the window is told to frost whatever is behind it,
-// so the desktop shows through blurred. Windows 11 does the blur natively via
-// the acrylic backdrop material; elsewhere the call is a no-op and the page
-// simply looks darker, which is why the slider is capped well short of 100.
+// lowers --page-alpha) and the OS shows what is behind the window: Windows 11
+// frosts it with the acrylic backdrop, macOS with vibrancy, and Linux simply
+// lets it through, blurred only if the user's compositor does that. All this
+// handler does is report which of those the renderer may count on.
 ipcMain.handle('win:setTransparency', (_e, value) => {
   if (!mainWindow || mainWindow.isDestroyed()) return { ok: false };
   let v = Number(value);
   if (!isFinite(v)) v = 0;
   v = Math.max(0, Math.min(90, v));
   try { mainWindow.setOpacity(1); } catch (_) {} // undo the old whole-window fade
-  // Nothing to switch here: the backdrop was decided when the window was
-  // created. This only tells the renderer whether it may go see-through, so a
-  // machine without the frosting keeps a solid page instead of a black hole.
-  return { ok: true, transparency: supportsAcrylic() ? v : 0, material: supportsAcrylic() ? 'acrylic' : 'unsupported' };
+  // The mode itself was decided when the window was created; this only tells
+  // the renderer how far it may go see-through, so a machine without the
+  // effect keeps a solid page instead of a black hole.
+  if (!glassMode) return { ok: true, transparency: 0, material: 'unsupported' };
+  // Windows and macOS frost the desktop themselves; on Linux we have to ask.
+  if (glassMode === 'transparent') setKdeBlur(v > 0);
+  const blurred = glassMode === 'transparent' ? kdeBlurOn : true;
+  return { ok: true, transparency: v, material: glassMode, blurred };
 });
 
 /* ------------------------- IPC: meta ------------------------- */
 ipcMain.handle('app:meta', () => ({
   brand: BRAND,
   version: app.getVersion(),
+  platform: process.platform,
   node: process.versions.node,
   electron: process.versions.electron
 }));

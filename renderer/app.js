@@ -14,7 +14,7 @@ let particlesOn = true;
 let particleRgb = { r: 255, g: 150, b: 40 }; // background canvas follows the accent
 let fxAlpha = 1; // background effects fade out as the window turns to glass
 let lastWinTransparency = null;
-let winTransparencyWarned = false;
+const transparencyNoted = {}; // each limitation is explained once, not per tick
 
 function hexToRgb(h) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(h || ''));
@@ -51,36 +51,52 @@ function applyTheme() {
   applyWindowTransparency();
 }
 // Window transparency: the app's BACKGROUND becomes see-through (panels, text
-// and buttons keep their own opacity), and the frosting grows with it — the
-// page blurs its own backdrop, and the main process asks the OS to blur the
-// desktop behind the window. Capped at 60 so the app never disappears.
+// and buttons keep their own opacity). What shows through it is the OS's job —
+// Windows frosts the desktop with an acrylic backdrop, macOS with vibrancy,
+// and on Linux the window is simply see-through unless the user's compositor
+// blurs it. The main process reports which of those this window actually got,
+// and how much of it may be used.
 function applyWindowTransparency() {
   const v = Math.max(0, Math.min(90, Number(theme.winTransparency) || 0));
   if (v === lastWinTransparency) return;
   lastWinTransparency = v;
-  // The page only goes see-through once the main process confirms the OS will
-  // frost what's behind the window. Otherwise the hole would show as a black
-  // rectangle instead of the desktop, so the app stays solid and says why.
+  // The page only goes see-through once the main process confirms this window
+  // can show what is behind it. Otherwise the hole would be a black rectangle
+  // instead of the desktop, so the app stays solid and says why.
   Promise.resolve()
     .then(() => api.setWindowTransparency(v))
     .then((res) => {
-      const applied = res && res.material === 'acrylic' ? v : 0;
+      const material = (res && res.material) || 'unsupported';
+      // On Linux the frosting is the compositor's, and it may not be there.
+      const blurred = !(res && res.blurred === false);
+      const applied = Math.max(0, Math.min(90, Number(res && res.transparency) || 0));
       const root = document.documentElement.style;
       // The slider IS the percentage: at 90 the page keeps a tenth of its own
-      // background and the rest is the frosted desktop behind the window.
+      // background and the rest is whatever is behind the window.
       root.setProperty('--page-alpha', (1 - applied / 100).toFixed(3));
-      root.setProperty('--page-blur', (applied * 0.25).toFixed(1) + 'px');
-      root.setProperty('--panel-blur', (14 + applied * 0.35).toFixed(1) + 'px');
+      // Blurring what is BEHIND the window is never the page's job, and on a
+      // plain transparent window there is nothing behind the page to sample —
+      // so the blur is left off there instead of costing GPU for nothing.
+      const blur = material === 'transparent' ? 0 : applied;
+      root.setProperty('--page-blur', (blur * 0.25).toFixed(1) + 'px');
+      root.setProperty('--panel-blur', (14 + blur * 0.35).toFixed(1) + 'px');
       // Glows and particles are painted ON the background; they'd sit in front
       // of the glass like smudges, so they fade out as it clears.
       root.setProperty('--fx-alpha', (1 - applied / 100).toFixed(3));
       fxAlpha = 1 - applied / 100;
-      if (v > 0 && !applied && !winTransparencyWarned) {
-        winTransparencyWarned = true;
-        logLocal('warn', T('win_transparency_unsupported'));
-      }
+      if (v > 0) noteTransparency(material, blurred);
     })
     .catch(() => {});
+}
+// Say once, in the console, whatever this window cannot do — an unexplained
+// slider that does nothing is the thing users report as a bug.
+function noteTransparency(material, blurred) {
+  const key = material === 'unsupported' ? 'win_transparency_unsupported'
+    : (material === 'transparent' && !blurred) ? 'win_transparency_noblur'
+    : null;
+  if (!key || transparencyNoted[key]) return;
+  transparencyNoted[key] = true;
+  logLocal(material === 'unsupported' ? 'warn' : 'info', T(key));
 }
 function syncThemeControls() {
   if ($('tpAccent')) $('tpAccent').value = theme.accent;
@@ -115,6 +131,11 @@ function applyLang() {
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = T(el.getAttribute('data-i18n')); });
   document.querySelectorAll('[data-i18n-ph]').forEach((el) => { el.setAttribute('placeholder', T(el.getAttribute('data-i18n-ph'))); });
+  // title-only, for icon buttons whose text content is the icon itself
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+    const t = T(el.getAttribute('data-i18n-title'));
+    el.title = t; el.setAttribute('aria-label', t);
+  });
   document.querySelectorAll('.lang-switch button').forEach((b) => b.classList.toggle('active', b.dataset.lang === lang));
   renderScenarios();
   refreshStatusText();
@@ -138,7 +159,14 @@ $('tabbar').addEventListener('click', (e) => {
 
 /* ------------------------------- meta ----------------------------------- */
 (async () => {
-  try { const m = await api.meta(); $('copyright').textContent = `© ${m.brand}`; } catch (_) {}
+  try {
+    const m = await api.meta();
+    $('copyright').textContent = `© ${m.brand}`;
+    // Lets the stylesheet fix up the few things that are platform-specific
+    // (macOS keeps its own window buttons over a hidden title bar, and does
+    // its own frosting, which CSS must not blur a second time).
+    if (m.platform) document.documentElement.setAttribute('data-platform', m.platform);
+  } catch (_) {}
 })();
 
 /* ------------------------------ versions -------------------------------- */
@@ -188,22 +216,44 @@ function numberField(labelKey, value, onInput, attrs = {}) {
   const span = document.createElement('span'); span.textContent = T(labelKey);
   const inp = document.createElement('input'); inp.type = 'number'; inp.value = value;
   Object.entries(attrs).forEach(([k, v]) => inp.setAttribute(k, v));
-  inp.addEventListener('input', () => { onInput(inp.value); persist(); });
+  inp.addEventListener('input', () => { onInput(inp.value); persist(); commitHistory(); });
   wrap.append(span, inp); return wrap;
 }
 function textField(labelKey, value, onInput) {
   const wrap = document.createElement('label'); wrap.className = 'sf grow';
   const span = document.createElement('span'); span.textContent = T(labelKey);
   const inp = document.createElement('input'); inp.type = 'text'; inp.value = value; inp.placeholder = T('chat_ph');
-  inp.addEventListener('input', () => { onInput(inp.value); persist(); });
+  inp.addEventListener('input', () => { onInput(inp.value); persist(); commitHistory(); });
   wrap.append(span, inp); return wrap;
 }
 // A full-width note under a step's inputs (e.g. the chat placeholders).
 function fieldHint(key) {
   const d = document.createElement('div'); d.className = 'sf-hint'; d.textContent = T(key); return d;
 }
+// Reorder without dragging. Drag & drop stays exactly as it was; these buttons
+// are the same operation for people who would rather click (or tab) than drag.
+let movedIndex = -1;
+let quietRender = false; // re-render without replaying every step's entry animation
+function moveStep(from, delta) {
+  const to = from + delta;
+  if (to < 0 || to >= scenarios.length) return;
+  const [m] = scenarios.splice(from, 1);
+  scenarios.splice(to, 0, m);
+  movedIndex = to; // renderScenarios() pulses this step so the eye can follow it
+  renderScenarios(); persist(); commitHistory(true);
+  // The tree is rebuilt, so the button that was just clicked no longer exists.
+  // Focus its replacement, or a second click (or Enter) would land on nothing.
+  const next = $('scenarioTree').querySelector('.step[data-index="' + to + '"] .' + (delta < 0 ? 'step-up' : 'step-down'));
+  if (next && !next.disabled) next.focus();
+}
 function renderScenarios() {
-  const tree = $('scenarioTree'); if (!tree) return; tree.innerHTML = '';
+  const tree = $('scenarioTree'); if (!tree) return;
+  // A reorder rebuilds every step; replaying the entry animation on all of them
+  // would make repeated clicks look like a stutter.
+  const moved = movedIndex; movedIndex = -1;
+  const quiet = quietRender; quietRender = false;
+  tree.classList.toggle('no-anim', moved >= 0 || quiet);
+  tree.innerHTML = '';
   if (!scenarios.length) { const e = document.createElement('div'); e.className = 'empty'; e.textContent = T('empty_scenarios'); tree.appendChild(e); return; }
   const tpl = $('tpl-step');
   scenarios.forEach((step, i) => {
@@ -221,7 +271,15 @@ function renderScenarios() {
     else if (step.type === 'goto') fields.append(numberField('f_x', step.x, (v) => (step.x = +v)), numberField('f_y', step.y, (v) => (step.y = +v)), numberField('f_z', step.z, (v) => (step.z = +v)));
     else if (step.type === 'chestclick') fields.append(numberField('f_slot', step.slot, (v) => (step.slot = +v), { min: 0 }));
     else if (step.type === 'reconnect') fields.append(numberField('f_rejoin_after', step.seconds, (v) => (step.seconds = +v), { min: 0 }));
-    node.querySelector('.step-del').onclick = () => { scenarios.splice(i, 1); renderScenarios(); persist(); };
+    if (i === moved) node.classList.add('moved');
+    const up = node.querySelector('.step-up'); const down = node.querySelector('.step-down');
+    up.title = T('move_up'); up.setAttribute('aria-label', T('move_up')); up.disabled = i === 0;
+    down.title = T('move_down'); down.setAttribute('aria-label', T('move_down')); down.disabled = i === scenarios.length - 1;
+    up.onclick = () => moveStep(i, -1);
+    down.onclick = () => moveStep(i, 1);
+    const del = node.querySelector('.step-del');
+    del.title = T('step_remove'); del.setAttribute('aria-label', T('step_remove'));
+    del.onclick = () => { scenarios.splice(i, 1); renderScenarios(); persist(); commitHistory(true); };
     node.addEventListener('dragstart', (e) => { node.classList.add('dragging'); e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; });
     node.addEventListener('dragend', () => node.classList.remove('dragging'));
     node.addEventListener('dragover', (e) => { e.preventDefault(); node.classList.add('drop-target'); });
@@ -230,15 +288,80 @@ function renderScenarios() {
       e.preventDefault(); node.classList.remove('drop-target');
       const from = parseInt(e.dataTransfer.getData('text/plain'), 10); const to = i;
       if (isNaN(from) || from === to) return;
-      const [m] = scenarios.splice(from, 1); scenarios.splice(to, 0, m); renderScenarios(); persist();
+      const [m] = scenarios.splice(from, 1); scenarios.splice(to, 0, m); renderScenarios(); persist(); commitHistory(true);
     });
     tree.appendChild(node);
   });
 }
 document.querySelector('.add-btns').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-add]'); if (!b) return;
-  scenarios.push({ ...DEFAULTS[b.dataset.add] }); renderScenarios(); persist();
+  scenarios.push({ ...DEFAULTS[b.dataset.add] }); renderScenarios(); persist(); commitHistory(true);
   const tree = $('scenarioTree'); tree.scrollTop = tree.scrollHeight;
+});
+
+/* ------------------------------ undo / redo ----------------------------- */
+// Every scenario edit — adding, deleting, reordering, typing in a field —
+// commits a snapshot of the whole list. The list is a handful of small plain
+// objects, so snapshotting it is both cheaper and far less error-prone than
+// replaying individual operations backwards. Only the scenarios are covered:
+// the server fields on the left are single inputs that already have the
+// browser's own undo.
+const HISTORY_LIMIT = 100;
+let history = [];   // snapshots (JSON), oldest first
+let historyAt = -1; // the one the UI is showing
+let historyTimer = null;
+
+const snapshotScenarios = () => JSON.stringify(scenarios);
+// Called once the saved scenarios are in: that list is the baseline, not
+// something the user should be able to undo their way out of.
+function historyReset() {
+  clearTimeout(historyTimer);
+  history = [snapshotScenarios()];
+  historyAt = 0;
+  syncHistoryButtons();
+}
+// Typing fires on every keystroke, so a burst collapses into a single entry —
+// otherwise one chat message would cost twenty undos to walk back.
+function commitHistory(immediate) {
+  clearTimeout(historyTimer);
+  const commit = () => {
+    const snap = snapshotScenarios();
+    if (snap === history[historyAt]) return; // nothing actually changed
+    history = history.slice(0, historyAt + 1); // a new edit drops the redo tail
+    history.push(snap);
+    if (history.length > HISTORY_LIMIT) history.shift();
+    historyAt = history.length - 1;
+    syncHistoryButtons();
+  };
+  if (immediate) commit(); else historyTimer = setTimeout(commit, 450);
+}
+function stepHistory(delta) {
+  const to = historyAt + delta;
+  if (to < 0 || to >= history.length) return;
+  clearTimeout(historyTimer); // a pending keystroke commit must not land after
+  historyAt = to;
+  scenarios = JSON.parse(history[historyAt]);
+  quietRender = true; // the whole list is replaced; don't animate every step in
+  renderScenarios();
+  persist();
+  syncHistoryButtons();
+}
+function syncHistoryButtons() {
+  $('undoBtn').disabled = historyAt <= 0;
+  $('redoBtn').disabled = historyAt >= history.length - 1;
+}
+$('undoBtn').onclick = () => stepHistory(-1);
+$('redoBtn').onclick = () => stepHistory(1);
+// Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z too). Inside a text box the browser's own undo
+// is what the user means, so those keystrokes are left alone there — and since
+// it fires an input event, the scenario history follows along anyway.
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  const k = String(e.key).toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); stepHistory(-1); }
+  else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); stepHistory(1); }
 });
 
 /* --------------------------- console (batched) -------------------------- */
@@ -641,6 +764,7 @@ async function init() {
     });
     applyLang();
   }
+  historyReset(); // the saved scenarios are the baseline, not an undo step
   renderScenarios();
   updateStartEnabled();
 }

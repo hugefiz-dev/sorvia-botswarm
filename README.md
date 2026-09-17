@@ -99,10 +99,14 @@ optimization advice.
 - **Theme panel** — accent colour, background colour, **panel transparency**, **window
   transparency** and an animated-background toggle. Changing a theme **fades** across the whole
   UI — panels, gradients, borders, glows and button shadows — instead of snapping.
-  - **Window transparency** turns the app's background into frosted glass — the desktop behind
-    shows through, blurred by Windows, while panels, buttons and text stay readable (the same
-    look a translucent terminal has). Slide further for more glass; it never goes fully clear.
-    Needs Windows 11 22H2+; elsewhere the window stays solid and the console tells you why.
+  - **Window transparency** turns the app's background into frosted glass — what is behind the
+    window shows through while panels, buttons and text stay readable (the same look a
+    translucent terminal has). Slide further for more glass; it never goes fully clear.
+    **Windows 11 22H2+** frosts it with the acrylic backdrop, **macOS** with vibrancy, and
+    **KDE Plasma** through KWin's blur effect. On other Linux desktops the window is genuinely
+    see-through but not blurred, because blurring behind a window is the compositor's decision;
+    the console says so once. Where none of this is available the window stays solid and the
+    console tells you why.
 - **Proxy** — a placeholder toggle under Resilience, marked *soon*: connection proxying is
   planned for a later update.
 - **Single instance** — launching again focuses the open window.
@@ -114,7 +118,7 @@ optimization advice.
 
 ## 🧩 How it works
 
-- **[Electron](https://www.electronjs.org/)** — desktop shell + UI (renderer).
+- **[Electron](https://www.electronjs.org/) 44** — desktop shell + UI (renderer).
 - **[mineflayer](https://github.com/PrismarineJS/mineflayer)** — the bot client engine
   (loaded lazily on first test, runs in the main process).
 - **[mineflayer-pathfinder](https://github.com/PrismarineJS/mineflayer-pathfinder)** — the
@@ -128,7 +132,15 @@ optimization advice.
 
 ## ✅ Requirements
 
-- **[Node.js](https://nodejs.org) LTS** (v18+; v20/22 recommended) and npm.
+**To run the app**
+
+- **Windows 10** or newer, **macOS Ventura (13)** or newer, or a current Linux distribution.
+  (These are Electron 44's minimums. If you are on an older system, the last release that still
+  supports it is v1.2.5.)
+
+**To build it from source**
+
+- **[Node.js](https://nodejs.org) LTS** (v20+ recommended) and npm.
 
 ---
 
@@ -149,7 +161,7 @@ First install dependencies once: `npm install`.
 ```bash
 npm run dist:win
 ```
-Output: `dist/Sorvia-BotSwarm-1.2.5-setup.exe`
+Output: `dist/Sorvia-BotSwarm-1.2.6-setup.exe`
 
 A clean English setup wizard:
 - shows a **license / terms** page you must accept,
@@ -169,7 +181,7 @@ A one-click helper is included: run **`build-win.bat`**.
 ```bash
 npm run dist:win-portable
 ```
-Output: `dist/Sorvia-BotSwarm-1.2.5-portable.exe` — double-click, no install, no admin.
+Output: `dist/Sorvia-BotSwarm-1.2.6-portable.exe` — double-click, no install, no admin.
 The first launch unpacks to a fixed folder (`%TEMP%\SorviaBotSwarm`) and reuses it, so only the
 first launch takes a few seconds; later launches are fast. (The installer above is faster still.)
 
@@ -177,10 +189,10 @@ first launch takes a few seconds; later launches are fast. (The installer above 
 ```bash
 npm run dist:linux
 ```
-Output: `dist/Sorvia-BotSwarm-1.2.5.AppImage`
+Output: `dist/Sorvia-BotSwarm-1.2.6.AppImage`
 ```bash
-chmod +x dist/Sorvia-BotSwarm-1.2.5.AppImage
-./dist/Sorvia-BotSwarm-1.2.5.AppImage
+chmod +x dist/Sorvia-BotSwarm-1.2.6.AppImage
+./dist/Sorvia-BotSwarm-1.2.6.AppImage
 ```
 If you hit a FUSE error on newer distros, run with `--appimage-extract-and-run` or install
 `libfuse2`. You can also just run from source with `npm start`.
@@ -272,8 +284,15 @@ sorvia-botswarm/
 - Pathfinding is CPU-bound and shared with every bot's physics, so the app scales its own
   budget: up to 25 bots search with the full budget, larger runs cap how many bots search at
   once. If movement still looks heavy, lower the roam radius or the bot count.
-- **Window transparency** needs **Windows 11 22H2+** (the OS paints the frosted backdrop).
-  Elsewhere the window stays solid and the console says so.
+- **Window transparency** needs **Windows 11 22H2+** (acrylic backdrop), **macOS** (vibrancy),
+  or **Linux with a compositing desktop**. Elsewhere the window stays solid and the console
+  says so.
+  - On **KDE Plasma** the app asks KWin to frost what is behind the window, so it looks the same
+    as on Windows. Other Linux desktops give a see-through but unblurred window — that part is
+    up to your compositor (for example picom's `blur-background`).
+  - If a Linux session without desktop effects leaves the app unreadable, quit it and start it
+    once with `--opaque` — or set `SORVIA_OPAQUE=1` — and it comes up solid. Quit the running
+    copy first: a second launch only focuses the open window.
 - Uninstalling while the app is still running can leave the old files in place — close the app
   first (the installer will also ask).
 

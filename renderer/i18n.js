@@ -22,6 +22,8 @@ window.I18N = {
 
     f_seconds: 'saniye', f_text: 'mesaj / komut', f_radius: 'yarıçap (blok)', f_x: 'X', f_y: 'Y', f_z: 'Z', f_slot: 'slot no',
     f_rejoin_after: 'kaç sn sonra dönsün',
+    move_up: 'Yukarı taşı', move_down: 'Aşağı taşı', step_remove: 'Adımı sil',
+    undo: 'Geri al (Ctrl+Z)', redo: 'İleri al (Ctrl+Y)',
     chat_coords_hint: '{coordinates} yazarsan bot o anki konumunu yazar ({x} {y} {z} de kullanılabilir).',
     update: 'Güncelle', updated: 'Canlı güncelleme uygulandı.',
     theme_title: 'Tema', theme_presets: 'Renk şeması', theme_accent: 'Vurgu rengi', theme_bg: 'Arka plan', theme_opacity: 'Panel saydamlığı', theme_win_transparency: 'Pencere saydamlığı', theme_particles: 'Arka plan animasyonu', theme_reset: 'Varsayılana dön',
@@ -32,7 +34,8 @@ window.I18N = {
     ver_latest: 'en yeni', ver_loading: 'Sürümler yükleniyor…', ver_auto: 'Otomatik (algıla)',
     chat_ph: '/spawn · merhaba · konum: {coordinates}', starting: 'Test başlatılıyor…', stopped_by_user: 'Kullanıcı durdurdu.',
     loading: 'Yükleniyor…', log_skipped: 'satır atlandı (akış çok hızlı)',
-    win_transparency_unsupported: 'Pencere saydamlığı bu sistemde desteklenmiyor (Windows 11 22H2 ve üzeri gerekir) — pencere opak bırakıldı.',
+    win_transparency_unsupported: 'Pencere saydamlığı bu sistemde kullanılamıyor (Windows 11 22H2+, macOS ya da masaüstü efektleri açık bir Linux gerekir) — pencere opak bırakıldı.',
+    win_transparency_noblur: 'Pencere saydam, ama arkası bulanıklaştırılmadı: bu masaüstü ortamınızın işi. KDE Plasma’da otomatik yapılır; diğerlerinde compositor ayarlarınıza bağlıdır (ör. picom blur-background).',
 
     // analysis
     a_server_info: 'Sunucu Bilgisi', a_get_info: 'Bilgi Al', a_inputs: 'Girdiler',
@@ -81,6 +84,8 @@ window.I18N = {
 
     f_seconds: 'seconds', f_text: 'message / command', f_radius: 'radius (blocks)', f_x: 'X', f_y: 'Y', f_z: 'Z', f_slot: 'slot #',
     f_rejoin_after: 'rejoin after (s)',
+    move_up: 'Move up', move_down: 'Move down', step_remove: 'Remove step',
+    undo: 'Undo (Ctrl+Z)', redo: 'Redo (Ctrl+Y)',
     chat_coords_hint: 'Type {coordinates} and the bot posts its current position ({x} {y} {z} work too).',
     update: 'Update', updated: 'Live update applied.',
     theme_title: 'Theme', theme_presets: 'Color scheme', theme_accent: 'Accent color', theme_bg: 'Background', theme_opacity: 'Panel transparency', theme_win_transparency: 'Window transparency', theme_particles: 'Background animation', theme_reset: 'Reset to default',
@@ -91,7 +96,8 @@ window.I18N = {
     ver_latest: 'latest', ver_loading: 'Loading versions…', ver_auto: 'Auto (detect)',
     chat_ph: '/spawn · hello · pos: {coordinates}', starting: 'Starting test…', stopped_by_user: 'Stopped by user.',
     loading: 'Loading…', log_skipped: 'log lines skipped (too fast)',
-    win_transparency_unsupported: 'Window transparency is not supported on this system (needs Windows 11 22H2 or newer) — the window stays solid.',
+    win_transparency_unsupported: 'Window transparency is not available on this system (needs Windows 11 22H2+, macOS, or a Linux desktop with compositing) — the window stays solid.',
+    win_transparency_noblur: 'The window is see-through, but what is behind it is not blurred: that is your desktop\u2019s job. KDE Plasma does it automatically; elsewhere it depends on your compositor (e.g. picom\u2019s blur-background).',
 
     a_server_info: 'Server Info', a_get_info: 'Get Info', a_inputs: 'Inputs',
     a_type: 'Server type', a_ram: 'RAM (GB)', a_players: 'Players (avg)', a_issue: 'Main issue',

@@ -22,7 +22,7 @@ echo [2/2] Building installer (setup.exe)...
 call npm run dist:win || (echo. & echo BUILD FAILED. & pause & exit /b 1)
 echo.
 echo ============================================================
-echo  DONE. Installer:  dist\Sorvia-BotSwarm-1.2.5-setup.exe
+echo  DONE. Installer:  dist\Sorvia-BotSwarm-1.2.6-setup.exe
 echo  (Portable instead:  npm run dist:win-portable)
 echo ============================================================
 pause
